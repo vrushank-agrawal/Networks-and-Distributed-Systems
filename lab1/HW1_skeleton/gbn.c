@@ -1,5 +1,7 @@
 #include "gbn.h"
 
+state_t *state;
+
 uint16_t checksum(uint16_t *buf, int nwords)
 {
 	uint32_t sum;
@@ -12,7 +14,7 @@ uint16_t checksum(uint16_t *buf, int nwords)
 }
 
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
-	
+
 	/* TODO: Your code here. */
 
 	/* Hint: Check the data length field 'len'.
@@ -26,21 +28,32 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 
-	/* TODO: Your code here. */
+
 
 	return(-1);
 }
 
 int gbn_close(int sockfd){
 
-	/* TODO: Your code here. */
+	/* Close the connection. */
 
-	return(-1);
+	int result = close(sockfd);
+
+	return(result);
 }
 
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
-	/* TODO: Your code here. */
+	/* SYN packet */
+	char syn_packet[DATALEN];
+
+	/* Populate the SYN packet */
+	syn_packet[0] = SYN;
+	syn_packet[1] = 0;
+	syn_packet[2] = 0;
+	syn_packet[3] = 0;
+
+	ssize_t result = maybe_sendto(sockfd, syn_packet, DATALEN, 0, server, socklen);
 
 	return(-1);
 }
@@ -54,26 +67,29 @@ int gbn_listen(int sockfd, int backlog){
 
 int gbn_bind(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
-	/* TODO: Your code here. */
+	printf("Binding socket %d...\n", sockfd);
+	int result = bind(sockfd, server, socklen);
 
-	return(-1);
-}	
+	return(result);
+}
 
 int gbn_socket(int domain, int type, int protocol){
-		
+
 	/*----- Randomizing the seed. This is used by the rand() function -----*/
 	srand((unsigned)time(0));
-	
-	/* TODO: Your code here. */
 
-	return(-1);
+	int sockfd = socket(domain, type, protocol);
+
+	return(sockfd);
 }
 
 int gbn_accept(int sockfd, struct sockaddr *client, socklen_t *socklen){
 
-	/* TODO: Your code here. */
+	/* This function is not necessary for UDP */
 
-	return(-1);
+	int newsockfd = accept(sockfd, client, socklen);
+
+	return(newsockfd);
 }
 
 ssize_t maybe_recvfrom(int  s, char *buf, size_t len, int flags, struct sockaddr *from, socklen_t *fromlen){
@@ -110,13 +126,13 @@ ssize_t maybe_sendto(int  s, const void *buf, size_t len, int flags, \
 
     char *buffer = malloc(len);
     memcpy(buffer, buf, len);
-    
-    
+
+
     /*----- Packet not lost -----*/
     if (rand() > LOSS_PROB*RAND_MAX){
         /*----- Packet corrupted -----*/
         if (rand() < CORR_PROB*RAND_MAX){
-            
+
             /*----- Selecting a random byte inside the packet -----*/
             int index = (int)((len-1)*rand()/(RAND_MAX + 1.0));
 

@@ -44,9 +44,10 @@ typedef struct {
 } __attribute__((packed)) gbnhdr;
 
 typedef struct state_t{
-
-	/* TODO: Your state information could be encoded here. */
-
+	int curr_state;
+	int sockfd;
+	int seqnum;
+	int window_size;
 } state_t;
 
 enum {
