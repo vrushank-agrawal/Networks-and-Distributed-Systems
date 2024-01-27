@@ -25,6 +25,7 @@ extern int errno;
 #define DATALEN   1024    /* length of the payload                       */
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
+#define MAX_ATTEMPTS 5    /* max number of attempts to send a packet     */
 
 /*----- Packet types -----*/
 #define SYN      0        /* Opens a connection                          */
@@ -44,10 +45,11 @@ typedef struct {
 } __attribute__((packed)) gbnhdr;
 
 typedef struct state_t{
-	int curr_state;
-	int sockfd;
-	int seqnum;
-	int window_size;
+	uint8_t curr_state;
+	uint8_t seqnum;
+	uint8_t window_size;
+	struct sockaddr *dest_addr;
+	socklen_t dest_sock_len;
 } state_t;
 
 enum {
@@ -76,5 +78,14 @@ ssize_t  maybe_recvfrom(int  s, char *buf, size_t len, int flags, \
 
 uint16_t checksum(uint16_t *buf, int nwords);
 
+
+/*----- Auxiliary functions -----*/
+void update_state(uint8_t type);
+void set_checksum(gbnhdr *packet);
+int validate_checksum(gbnhdr *packet);
+void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size);
+void send_packet(gbnhdr *packet, int sockfd, uint8_t type, uint8_t seqnum);
+void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *client,
+					  socklen_t *socklen, uint8_t type);
 
 #endif

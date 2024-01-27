@@ -39,8 +39,10 @@ int main(int argc, char *argv[]){
 	/*--- Setting the server's parameters -----*/
 	memset(&server, 0, sizeof(struct sockaddr_in));
 	server.sin_family = AF_INET;
-	server.sin_addr   = *(struct in_addr *)he->h_addr;
+	server.sin_addr   = *(struct in_addr *)he->h_addr_list[0];
 	server.sin_port   = htons(atoi(argv[2]));
+
+	printf("Sending file...\n");
 
 	/*----- Connecting to the server -----*/
 	if (gbn_connect(sockfd, (struct sockaddr *)&server, socklen) == -1){
