@@ -2,11 +2,14 @@
 
 state_t s;
 
+/* The original checksum function was modified to
+ * work with the gbnhdr struct for convenience */
 uint16_t checksum(gbnhdr *packet)
 {
-	/* We add 2 because of buffer for odd bytes */
+	/* We add 1 because type and seqnum are 2 bytes together */
 	int nwords = 1 + DATALEN/2;
 	uint16_t buf[nwords];
+	/* The packet is converted to a buffer of 16-bit words */
 	buf[0] = (uint16_t)packet->seqnum + ((uint16_t)packet->type << 8);
 	int offset = 1, byte = 0;
     for (; byte < DATALEN/2; byte++) {
@@ -14,6 +17,7 @@ uint16_t checksum(gbnhdr *packet)
 						((uint16_t)packet->data[byte*2] << 8);
 	}
 
+	/* Original checksum algorithm */
 	uint32_t sum;
 
 	for (sum = 0; nwords > 0; nwords--)
@@ -64,8 +68,6 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 	/*----- Setting the destination (server) details -----*/
 	memcpy(&s.dest_addr, server, socklen);
 	s.dest_sock_len = socklen;
-
-	printf("Server info set.\n");
 
 	/*----- Sending the SYN packet -----*/
 	while (s.curr_state != ESTABLISHED)
@@ -251,14 +253,18 @@ void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size) {
 	packet->type = buffer[id++];
 	packet->seqnum = buffer[id++];
 
+	/* The checksum is a 16-bit value, so we need to convert it
+	 * from 2 bytes to a uint16_t */
 	char *ptr = (char *)&packet->checksum;
 	for (i = 0; i < sizeof(packet->checksum); i++)
 		ptr[i] = buffer[id++];
 
+	/* The data is a DATALEN array */
 	for (i = 0; i < DATALEN; i++)
 		packet->data[i] = buffer[id++];
 }
 
+/* Used for debugging */
 const char *states[] = {
 	"SYN",
 	"SYNACK",
@@ -277,20 +283,15 @@ void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *from,
 		perror("gbn_recv: DATA");
 		exit(-1);
 	}
-	printf("%s packet received.\n", states[type]);
-
 	buffer_to_gbnhdr(packet, buffer, sizeof(*packet));
-	printf("Packet converted to gbnhdr.\n");
 
 	if (!validate_checksum(packet)) {
 		printf("%s packet corrupted.\n", states[type]);
 		exit(-1);
 	}
-	printf("%s packet validated.\n", states[type]);
 
 	if (packet->type != type) {
 		printf("%s packet expected. Recieved %d...\n", states[type], packet->type);
 		exit(-1);
 	}
-	printf("%s packet type validated.\n", states[type]);
 }
