@@ -2,12 +2,22 @@
 
 state_t s;
 
-uint16_t checksum(uint16_t *buf, int nwords)
+uint16_t checksum(gbnhdr *packet)
 {
+	/* We add 2 because of buffer for odd bytes */
+	int nwords = 1 + DATALEN/2;
+	uint16_t buf[nwords];
+	buf[0] = (uint16_t)packet->seqnum + ((uint16_t)packet->type << 8);
+	int offset = 1, byte = 0;
+    for (; byte < DATALEN/2; byte++) {
+		buf[offset++] = (uint16_t)packet->data[byte*2 + 1] +
+						((uint16_t)packet->data[byte*2] << 8);
+	}
+
 	uint32_t sum;
 
 	for (sum = 0; nwords > 0; nwords--)
-		sum += *buf++;
+		sum += buf[nwords - 1];
 	sum = (sum >> 16) + (sum & 0xffff);
 	sum += (sum >> 16);
 	return ~sum;
@@ -49,7 +59,7 @@ int gbn_close(int sockfd){
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
 	int attempts = 0;
-	gbnhdr *packet = malloc(sizeof(gbnhdr));
+	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
 
 	/*----- Setting the destination (server) details -----*/
 	memcpy(&s.dest_addr, server, socklen);
@@ -81,7 +91,7 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 		{
 			/* TODO: Set the timeout value to TIMEOUT seconds */
 
-			rcv_and_validate(sockfd, packet, s.dest_addr, &s.dest_sock_len, SYNACK);
+			rcv_and_validate(sockfd, packet, &s.dest_addr, &s.dest_sock_len, SYNACK);
 			printf("SYNACK packet received.\n");
 			update_state(ESTABLISHED);
 		}
@@ -126,7 +136,7 @@ int gbn_socket(int domain, int type, int protocol){
 
 int gbn_accept(int sockfd, struct sockaddr *client, socklen_t *socklen){
 
-	gbnhdr *packet = malloc(sizeof(gbnhdr));
+	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
 
 	/*----- Waiting for a SYN packet -----*/
 	rcv_and_validate(sockfd, packet, client, socklen, SYN);
@@ -216,27 +226,9 @@ void update_state(uint8_t state) {
 	s.curr_state = state;
 }
 
-void gbnhdr_to_uint16(uint16_t *buf, gbnhdr *packet) {
-	buf[0] = (uint16_t)(((uint16_t)packet->type << 8) | (uint16_t)packet->seqnum);
-	buf[1] = packet->seqnum;
-	int i;
-    for (i = 0; i < DATALEN/2; i++)
-        buf[i + 2] = (uint16_t)(((uint16_t)packet->data[2*i] << 8) | (uint16_t)packet->data[2*i+1]);
-}
-
-void set_checksum(gbnhdr *packet) {
-	packet->checksum = 0;
-	uint16_t *buf = malloc(sizeof(*packet));
-	gbnhdr_to_uint16(buf, packet);
-	packet->checksum = checksum(buf, sizeof(*packet));
-	free(buf);
-}
-
 int validate_checksum(gbnhdr *packet) {
-	uint16_t *buf = malloc(sizeof(*packet));
-	gbnhdr_to_uint16(buf, packet);
-	uint16_t resultsum = checksum(buf, sizeof(*packet));
-	free(buf);
+	uint16_t resultsum = checksum(packet);
+	printf("Checksum: %d | Resultsum: %d\n", packet->checksum, resultsum);
 	if (resultsum == packet->checksum)
 		return 1;
 	else
@@ -245,27 +237,37 @@ int validate_checksum(gbnhdr *packet) {
 
 void send_packet(gbnhdr *packet, int sockfd, uint8_t type, uint8_t seqnum) {
 	packet->type = type;
-	set_checksum(packet);
+	packet->checksum = checksum(packet);
 	packet->seqnum = seqnum;
 
-	if (maybe_sendto(sockfd, packet, sizeof(*packet), 0, s.dest_addr, s.dest_sock_len) == -1) {
+	if (maybe_sendto(sockfd, packet, sizeof(*packet), 0, &s.dest_addr, s.dest_sock_len) == -1) {
 		perror("gbn_send: DATA");
 		exit(-1);
 	}
 }
 
 void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size) {
-	int id = 0;
+	int id = 0, i = 0;
 	packet->type = buffer[id++];
 	packet->seqnum = buffer[id++];
 
-	/* convert checksum from char array to uint16_t */
-	memcpy(&packet->checksum, &buffer[id], sizeof(packet->checksum));
-	packet->checksum = ntohs(packet->checksum);
-	id += sizeof(packet->checksum);
+	char *ptr = (char *)&packet->checksum;
+	for (i = 0; i < sizeof(packet->checksum); i++)
+		ptr[i] = buffer[id++];
 
-	memcpy(packet->data, &buffer[id], buffer_size - id);
+	for (i = 0; i < DATALEN; i++)
+		packet->data[i] = buffer[id++];
 }
+
+const char *states[] = {
+	"SYN",
+	"SYNACK",
+	"DATA",
+	"DATAACK",
+	"FIN",
+	"FINACK",
+	"RST"
+};
 
 void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *from,
 					  socklen_t *socklen, uint8_t type) {
@@ -275,20 +277,20 @@ void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *from,
 		perror("gbn_recv: DATA");
 		exit(-1);
 	}
-	printf("%d packet received.\n", type);
+	printf("%s packet received.\n", states[type]);
 
 	buffer_to_gbnhdr(packet, buffer, sizeof(*packet));
 	printf("Packet converted to gbnhdr.\n");
 
 	if (!validate_checksum(packet)) {
-		printf("%d packet corrupted.\n", type);
+		printf("%s packet corrupted.\n", states[type]);
 		exit(-1);
 	}
-	printf("%d packet validated.\n", type);
+	printf("%s packet validated.\n", states[type]);
 
 	if (packet->type != type) {
-		printf("%d packet expected. Recieved %d...\n", type, packet->type);
+		printf("%s packet expected. Recieved %d...\n", states[type], packet->type);
 		exit(-1);
 	}
-	printf("%d packet type validated.\n", type);
+	printf("%s packet type validated.\n", states[type]);
 }

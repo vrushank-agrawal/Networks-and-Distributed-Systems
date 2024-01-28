@@ -48,7 +48,7 @@ typedef struct state_t{
 	uint8_t curr_state;
 	uint8_t seqnum;
 	uint8_t window_size;
-	struct sockaddr *dest_addr;
+	struct sockaddr dest_addr;
 	socklen_t dest_sock_len;
 } state_t;
 
@@ -76,15 +76,14 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags);
 ssize_t  maybe_recvfrom(int  s, char *buf, size_t len, int flags, \
             struct sockaddr *from, socklen_t *fromlen);
 
-uint16_t checksum(uint16_t *buf, int nwords);
+uint16_t checksum(gbnhdr *packet);
 
 
 /*----- Auxiliary functions -----*/
 void update_state(uint8_t type);
-void set_checksum(gbnhdr *packet);
 int validate_checksum(gbnhdr *packet);
-void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size);
 void send_packet(gbnhdr *packet, int sockfd, uint8_t type, uint8_t seqnum);
+void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size);
 void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *client,
 					  socklen_t *socklen, uint8_t type);
 
