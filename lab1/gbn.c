@@ -29,33 +29,107 @@ uint16_t checksum(gbnhdr *packet)
 
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
-	/* TODO: Your code here. */
-
 	/* Hint: Check the data length field 'len'.
 	 *       If it is > DATALEN, you will have to split the data
 	 *       up into multiple packets - you don't have to worry
 	 *       about getting more than N * DATALEN.
 	 */
 
-	return(-1);
+	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
+
+
+	return(0);
 }
 
 ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 
+	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
 
+	/*----- Waiting for a packet -----*/
+	rcv(sockfd, packet, &s.dest_addr, &s.dest_sock_len, DATA);
 
-	return(-1);
+	/*----- Received a DATA packet -----*/
+	if (packet->type == DATA) {
+		printf("DATA packet received.\n");
+		send_packet(packet, sockfd, DATAACK, packet->seqnum);
+	}
+
+	/*----- The connection is being closed -----*/
+	else if (packet->type == FIN) {
+		printf("FIN packet received.\n");
+		update_state(FIN_RCVD);
+	}
+
+	/*----- This should not happen -----*/
+	else wrong_packet_error(DATA, packet->type);
+
+	free(packet);
+	if (s.curr_state == FIN_RCVD)
+		return(0);
+	return(1);
 }
 
 int gbn_close(int sockfd){
-	int result = close(sockfd);
-	if (result == -1){
-		perror("socket could not close.");
-		exit(-1);
+
+	int result, attempts = 0;
+	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
+
+	/*----- Sending the FIN packet -----*/
+	while (s.curr_state != CLOSED)
+	{
+		/* Try MAX_ATTEMPTS times */
+		if (attempts > MAX_ATTEMPTS)
+		{
+			printf("TIMEOUT Connection could not be closed.\n");
+			exit(-1);
+		}
+
+		/* This is the sender's side (client) */
+		/* If the connection is established, send a FIN packet */
+		else if (s.curr_state == ESTABLISHED)
+		{
+			attempts++;
+			send_packet(packet, sockfd, FIN, 0);
+			printf("FIN packet sent.\n");
+			update_state(FIN_SENT);
+		}
+
+		/* If the connection is in FIN_SENT state, wait for a FINACK packet */
+		else if (s.curr_state == FIN_SENT)
+		{
+			rcv(sockfd, packet, &s.dest_addr, &s.dest_sock_len, FINACK);
+			if (packet->type != FINACK) wrong_packet_error(FINACK, packet->type);
+			printf("FINACK packet received.\n");
+			if ((result = close(sockfd)) == -1){
+				perror("socket could not close.");
+				exit(-1);
+			}
+			update_state(CLOSED);
+		}
+
+		/* This is the receiver's side (server) */
+		/* If the connection is in FIN_RCVD state, send a FINACK packet */
+		else if (s.curr_state == FIN_RCVD)
+		{
+			send_packet(packet, sockfd, FINACK, 0);
+			printf("FINACK packet sent.\n");
+			if ((result = close(sockfd)) == -1){
+				perror("socket could not close.");
+				exit(-1);
+			}
+			update_state(CLOSED);
+		}
+
+		/* Apocalyptic scenario */
+		else {
+			printf("gbn_close: This should never happen.\n");
+			exit(-1);
+		}
+
 	}
 
-	update_state(CLOSED);
 	printf("Socket %d closed.\n", sockfd);
+	free(packet);
 	return(result);
 }
 
@@ -93,7 +167,8 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 		{
 			/* TODO: Set the timeout value to TIMEOUT seconds */
 
-			rcv_and_validate(sockfd, packet, &s.dest_addr, &s.dest_sock_len, SYNACK);
+			rcv(sockfd, packet, &s.dest_addr, &s.dest_sock_len, SYNACK);
+			if (packet->type != SYNACK) wrong_packet_error(SYNACK, packet->type);
 			printf("SYNACK packet received.\n");
 			update_state(ESTABLISHED);
 		}
@@ -141,7 +216,8 @@ int gbn_accept(int sockfd, struct sockaddr *client, socklen_t *socklen){
 	gbnhdr *packet = calloc(1, sizeof(gbnhdr));
 
 	/*----- Waiting for a SYN packet -----*/
-	rcv_and_validate(sockfd, packet, client, socklen, SYN);
+	rcv(sockfd, packet, client, socklen, SYN);
+	if (packet->type != SYN) wrong_packet_error(SYN, packet->type);
 	printf("SYN packet received.\n");
 	update_state(SYN_RCVD);
 
@@ -275,8 +351,7 @@ const char *states[] = {
 	"RST"
 };
 
-void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *from,
-					  socklen_t *socklen, uint8_t type) {
+void rcv(int sockfd, gbnhdr *packet, struct sockaddr *from, socklen_t *socklen, uint8_t type) {
 	char *buffer = malloc(sizeof(*packet));
 
 	if (maybe_recvfrom(sockfd, buffer, sizeof(*packet), 0, from, socklen) == -1) {
@@ -290,8 +365,10 @@ void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *from,
 		exit(-1);
 	}
 
-	if (packet->type != type) {
-		printf("%s packet expected. Recieved %d...\n", states[type], packet->type);
-		exit(-1);
-	}
+	free(buffer);
+}
+
+void wrong_packet_error(uint8_t expected, uint8_t received) {
+	printf("Expected %s packet, received %s packet.\n", states[expected], states[received]);
+	exit(-1);
 }

@@ -82,9 +82,10 @@ uint16_t checksum(gbnhdr *packet);
 /*----- Auxiliary functions -----*/
 void update_state(uint8_t type);
 int validate_checksum(gbnhdr *packet);
+void wrong_packet_error(uint8_t expected, uint8_t received);
 void send_packet(gbnhdr *packet, int sockfd, uint8_t type, uint8_t seqnum);
 void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size);
-void rcv_and_validate(int sockfd, gbnhdr *packet, struct sockaddr *client,
-					  socklen_t *socklen, uint8_t type);
+void rcv(int sockfd, gbnhdr *packet, struct sockaddr *client,
+		socklen_t *socklen, uint8_t type);
 
 #endif
