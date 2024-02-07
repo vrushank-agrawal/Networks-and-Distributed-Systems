@@ -231,7 +231,7 @@ int gbn_accept(int sockfd, struct sockaddr *client, socklen_t *socklen){
 	printf("SYNACK frame sent.\n");
 
 	free(frame);
-	return(0);
+	return(sockfd);
 }
 
 ssize_t maybe_recvfrom(int s, char *buf, size_t len, int flags,
