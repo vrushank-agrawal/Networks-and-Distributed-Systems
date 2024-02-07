@@ -25,21 +25,21 @@ extern int errno;
 #define DATALEN   1024    /* length of the payload                       */
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
-#define MAX_ATTEMPTS 5    /* max number of attempts to send a packet     */
+#define MAX_ATTEMPTS 5    /* max number of attempts to send a frame     */
 
 /*----- Packet types -----*/
 #define SYN      0        /* Opens a connection                          */
-#define SYNACK   1        /* Acknowledgement of the SYN packet           */
+#define SYNACK   1        /* Acknowledgement of the SYN frame           */
 #define DATA     2        /* Data packets                                */
-#define DATAACK  3        /* Acknowledgement of the DATA packet          */
+#define DATAACK  3        /* Acknowledgement of the DATA frame          */
 #define FIN      4        /* Ends a connection                           */
-#define FINACK   5        /* Acknowledgement of the FIN packet           */
-#define RST      6        /* Reset packet used to reject new connections */
+#define FINACK   5        /* Acknowledgement of the FIN frame           */
+#define RST      6        /* Reset frame used to reject new connections */
 
-/*----- Go-Back-n packet format -----*/
+/*----- Go-Back-n frame format -----*/
 typedef struct {
-	uint8_t  type;            /* packet type (e.g. SYN, DATA, ACK, FIN)     */
-	uint8_t  seqnum;          /* sequence number of the packet              */
+	uint8_t  type;            /* frame type (e.g. SYN, DATA, ACK, FIN)     */
+	uint8_t  seqnum;          /* sequence number of the frame              */
     uint16_t checksum;        /* header and payload checksum                */
     uint8_t data[DATALEN];    /* pointer to the payload                     */
 } __attribute__((packed)) gbnhdr;
@@ -76,16 +76,16 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags);
 ssize_t  maybe_recvfrom(int  s, char *buf, size_t len, int flags, \
             struct sockaddr *from, socklen_t *fromlen);
 
-uint16_t checksum(gbnhdr *packet);
+uint16_t checksum(gbnhdr *frame);
 
 
 /*----- Auxiliary functions -----*/
 void update_state(uint8_t type);
-int validate_checksum(gbnhdr *packet);
+int validate_checksum(gbnhdr *frame);
 void wrong_packet_error(uint8_t expected, uint8_t received);
-void send_packet(gbnhdr *packet, int sockfd, uint8_t type, uint8_t seqnum);
-void buffer_to_gbnhdr(gbnhdr *packet, char *buffer, int buffer_size);
-void rcv(int sockfd, gbnhdr *packet, struct sockaddr *client,
+void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum);
+void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
+void rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
 		socklen_t *socklen, uint8_t type);
 
 #endif
