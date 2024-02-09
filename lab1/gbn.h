@@ -52,6 +52,13 @@ typedef struct state_t{
 	socklen_t dest_sock_len;
 } state_t;
 
+typedef struct frame_t{
+	char *frame_addr;
+	gbnhdr *frame;
+	u_int8_t seqnum;
+	int len;
+} frame_t;
+
 enum {
 	CLOSED=0,
 	SYN_SENT,
@@ -82,10 +89,15 @@ uint16_t checksum(gbnhdr *frame);
 /*----- Auxiliary functions -----*/
 void update_state(uint8_t type);
 int validate_checksum(gbnhdr *frame);
+void gbnhdr_to_buffer(gbnhdr *frame, char *buffer, int buffer_size);
 void wrong_packet_error(uint8_t expected, uint8_t received);
-void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum);
+void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int data_len);
 void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
-void rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
+int rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
 		socklen_t *socklen, uint8_t type);
+void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts,
+	int* i, uint8_t* frame_counter);
+int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type);
+int is_frame_ok(int rcvd_bytes, uint8_t type);
 
 #endif

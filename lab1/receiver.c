@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in client;
 	FILE *outputFile;
 	socklen_t socklen;
-	
+
 	/*----- Checking arguments -----*/
 	if (argc != 3){
 		fprintf(stderr, "usage: receiver <port> <filename>\n");
@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
 		perror("gbn_socket");
 		exit(-1);
 	}
-	
+
 	/*--- Setting the server's parameters -----*/
 	memset(&server, 0, sizeof(struct sockaddr_in));
 	server.sin_family      = AF_INET;
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 		perror("gbn_bind");
 		exit(-1);
 	}
-	
+
 	/*----- Listening to new connections -----*/
 	if (gbn_listen(sockfd, 1) == -1){
 		perror("gbn_listen");
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 		perror("gbn_accept");
 		exit(-1);
 	}
-	
+
 	/*----- Reading from the socket and dumping it to the file -----*/
 	while(1){
 		if ((numRead = gbn_recv(newSockfd, buf, DATALEN, 0)) == -1){
@@ -77,6 +77,6 @@ int main(int argc, char *argv[])
 		perror("fclose");
 		exit(-1);
 	}
-			
+
 	return (0);
 }
