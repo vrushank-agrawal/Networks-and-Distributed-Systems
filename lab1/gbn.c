@@ -124,10 +124,15 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 			memcpy(buf, frame->data, rcvd_bytes);
 			printf("Data Size = %d\t seqnum: %i\n", rcvd_bytes, frame->seqnum);
 			/* printf("Data: \n%s\n", (char *)buf); */
-			if (frame->seqnum - 1 == largest_seqnum_rcvd)
+
+			/*----- Sending a DATAACK for the last consecutive frame received -----*/
+			if (frame->seqnum - 1 == largest_seqnum_rcvd) {
 				send_packet(frame, sockfd, DATAACK, frame->seqnum, 0);
-			else
+				largest_seqnum_rcvd = frame->seqnum;
+			} else {
 				send_packet(frame, sockfd, DATAACK, largest_seqnum_rcvd, 0);
+			}
+			printf("DATAACK frame sent.\n");
 			flags = 1;
 		}
 
@@ -433,9 +438,11 @@ void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int da
 	/* printf("Data sending type: %i\tseqnum: %i\t", frame->type, frame->seqnum);
 	printf("%s\n", (char *)frame->data);*/
 
+	/* Convert the frame to a buffer */
 	char *buf = calloc(1, data_len + 4);
 	gbnhdr_to_buffer(frame, buf, data_len);
 
+	/* Send the buffer */
 	if (maybe_sendto(sockfd, buf, data_len + 4, 0, &s.dest_addr, s.dest_sock_len) == -1) {
 		perror("gbn_send: DATA");
 		exit(-1);
@@ -461,29 +468,27 @@ void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size) {
 }
 
 int rcv(int sockfd, gbnhdr *frame, struct sockaddr *from, socklen_t *socklen, uint8_t type) {
+	/* Receive the frame */
 	char *buffer = malloc(sizeof(*frame));
 	memset(buffer, 0, sizeof(*frame));
 	int rcvd_bytes = maybe_recvfrom(sockfd, buffer, sizeof(*frame), 0, from, socklen);
 
-	if (rcvd_bytes == -1) {
-		perror("gbn_recv: DATA packet not received.");
-		return(-1);
-	}
+	/* If the frame was not received, return -1 */
+	if (rcvd_bytes == -1) return(-1);
 
+	/* Convert the buffer to a frame */
 	buffer_to_gbnhdr(frame, buffer, sizeof(*frame));
 
-	if (!validate_checksum(frame)) {
-		printf("%s frame corrupted.\n", states[type]);
-		return(-2);
-	}
+	/* Check if the frame is corrupted and return -2 */
+	if (!validate_checksum(frame)) return(-2);
 
 	free(buffer);
 	return(rcvd_bytes);
 }
 
+/* Display an error message */
 void wrong_packet_error(uint8_t expected, uint8_t received) {
 	printf("Expected %s frame, received %s frame.\n", states[expected], states[received]);
-	exit(-1);
 }
 
 void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts, int* i, uint8_t* frame_counter, uint8_t* last_acked_frame) {
@@ -493,7 +498,6 @@ void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts, in
 	}
 	if (expected < last_acked_frame) expected += s.window_size;
 	attempts++;
-	// if
 }
 
 int is_frame_correct(int rcvd_bytes, uint8_t type,
@@ -502,12 +506,17 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 					uint8_t expected_seqnum,
 					uint8_t received_seqnum)
 {
-	if (!is_frame_ok(rcvd_bytes, type)) return (0);
+	/* Check if the frame was received */
+	if (!is_frame_ok(rcvd_bytes, type))
+		return (0);
+
+	/* Check if the frame is of the expected type */
 	if (type != expected_type) {
 		wrong_packet_error(expected_type, type);
 		return(0);
 	}
 
+	/* Check if the frame is in the window */
 	if (received_seqnum >= s.window_size) {
 		if (last_acked_frame < received_seqnum && received_seqnum < last_acked_frame + s.window_size) {
 			return (1);
@@ -517,17 +526,25 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 			return (1);
 		}
 	}
-	printf("gbn_rcv: %s packet out of order.\n", states[type]);
+
+	/* The frame is out of order */
+	printf("gbn_rcv: %s frame out of order.\n", states[type]);
 	return(0);
 }
 
 int is_frame_ok(int rcvd_bytes, uint8_t type) {
+	/* Check if the frame was received */
 	if (rcvd_bytes == -1) {
-		printf("gbn_rcv: %s packet lost.\n", states[type]);
-		return(0);
-	} else if (rcvd_bytes == -2) {
-		printf("gbn_rcv: %s packet corrupted.\n", states[type]);
+		printf("gbn_rcv: %s frame lost.\n", states[type]);
 		return(0);
 	}
+
+	/* Check if the frame is corrupted */
+	else if (rcvd_bytes == -2) {
+		printf("gbn_rcv: %s frame corrupted.\n", states[type]);
+		return(0);
+	}
+
+	/* The frame is correct */
 	return(1);
 }
