@@ -1,0 +1,4 @@
+File: tests/Makefile \t 995 microseconds
+File: tests/gbn.c \t 1127 microseconds
+File: tests/hi.txt \t 1284 microseconds
+File: tests/pdf.pdf \t 1662 microseconds

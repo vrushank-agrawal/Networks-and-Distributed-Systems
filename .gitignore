@@ -2,3 +2,5 @@
 *.o
 *.tar
 *.tar.gz
+*.tar.bz2
+*.time.txt
