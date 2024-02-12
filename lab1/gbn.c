@@ -31,11 +31,11 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 	gbnhdr *ack_frame = calloc(1, sizeof(gbnhdr));
 	/*----- Splitting the data into multiple frames -----*/
-	s.window_size = 1;
+	s.window_size = 8;
 	int max_seqnum = 2 * s.window_size;
 	int num_frames = (len % DATALEN == 0) ? len/DATALEN : len/DATALEN + 1;
 	int last_frame_size = (int)len % DATALEN;
-	printf("Last frame size: %d\n", last_frame_size);
+	/* printf("Last frame size: %d\n", last_frame_size); */
 	frame_t *frames = calloc(num_frames, sizeof(frame_t));
 
 	/*----- Creating the frames -----*/
@@ -55,8 +55,8 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 	printf("Number of frames created: %d\n", num_frames);
 
-	uint8_t frame_counter = 0;
-	uint8_t last_acked_frame = 0;
+	uint8_t frame_counter = -1;
+	uint8_t last_acked_frame = -1;
 	uint8_t expected_ack = 0;
 	int attempts = 0;
 	int i = 0;
@@ -76,25 +76,25 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		}
 
 		/******************* Send one window *******************/
-		while ((frame_counter < (last_acked_frame + s.window_size) % max_seqnum) && (i < num_frames))
+		do
 		{
 			send_packet((gbnhdr *)frames[i].frame_addr, sockfd, DATA, frames[i].seqnum, frames[i].len);
-			expected_ack = frame_counter;
-			frame_counter = (frame_counter + 1) % max_seqnum;
+			expected_ack = (++frame_counter) % max_seqnum;
+			frame_counter %= max_seqnum;
 			i++;
-		}
-		printf("After sending one window, frame counter: %i\n", frame_counter);
+			printf("After sending frame: %i\ti: %i\tlast_acked_frame: %i\n", expected_ack, i, last_acked_frame);
+		} while ((frame_counter < (last_acked_frame + s.window_size) % max_seqnum) && (i < num_frames));
 
 		/******************* Waiting for an ACK frame *******************/
 		rcvd_bytes = rcv(sockfd, ack_frame, &s.dest_addr, &s.dest_sock_len, DATAACK);
 
 		/******************* Check if ACK frame correct *******************/
-		if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK)) {
-			reset_frame_counter(&expected_ack, &last_acked_frame, &attempts, &i, &frame_counter);
+		if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK, last_acked_frame, expected_ack, ack_frame->seqnum)) {
+			reset_frame_counter(&expected_ack, &ack_frame->seqnum, &attempts, &i, &frame_counter, &last_acked_frame);
 		} else {
 			last_acked_frame = ack_frame->seqnum;
-			printf("DATAACK frame %i received. Expected %i\n", last_acked_frame, expected_ack);
 		}
+		printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
 	}
 	printf("All frames sent.\n");
 
@@ -110,6 +110,7 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 
 	gbnhdr *frame = calloc(1, sizeof(gbnhdr));
 	int rcvd_bytes = 0;
+	uint8_t largest_seqnum_rcvd = -1;
 
 	while(!flags) {
 		/*----- Waiting for a frame -----*/
@@ -121,9 +122,12 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 			printf("DATA frame received.\n");
 			rcvd_bytes -= 4;
 			memcpy(buf, frame->data, rcvd_bytes);
-			printf("Data Size = %d\n", rcvd_bytes);
-			printf("Data: %s\n", (char *)buf);
-			send_packet(frame, sockfd, DATAACK, frame->seqnum, 0);
+			printf("Data Size = %d\t seqnum: %i\n", rcvd_bytes, frame->seqnum);
+			/* printf("Data: \n%s\n", (char *)buf); */
+			if (frame->seqnum - 1 == largest_seqnum_rcvd)
+				send_packet(frame, sockfd, DATAACK, frame->seqnum, 0);
+			else
+				send_packet(frame, sockfd, DATAACK, largest_seqnum_rcvd, 0);
 			flags = 1;
 		}
 
@@ -422,10 +426,12 @@ void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int da
 		data_len = DATALEN;
 		memset(frame->data, 0, DATALEN);
 	}
-
 	frame->type = type;
-	frame->checksum = checksum(frame);
 	frame->seqnum = seqnum;
+	frame->checksum = checksum(frame);
+
+	/* printf("Data sending type: %i\tseqnum: %i\t", frame->type, frame->seqnum);
+	printf("%s\n", (char *)frame->data);*/
 
 	char *buf = calloc(1, data_len + 4);
 	gbnhdr_to_buffer(frame, buf, data_len);
@@ -480,20 +486,39 @@ void wrong_packet_error(uint8_t expected, uint8_t received) {
 	exit(-1);
 }
 
-void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts, int* i, uint8_t* frame_counter) {
+void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts, int* i, uint8_t* frame_counter, uint8_t* last_acked_frame) {
 	if (*expected == *received) {
 		*attempts = 0;
 		return;
 	}
+	if (expected < last_acked_frame) expected += s.window_size;
+	attempts++;
+	// if
 }
 
-int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type) {
-	int ok = is_frame_ok(rcvd_bytes, type);
-	if (ok && type != expected_type) {
+int is_frame_correct(int rcvd_bytes, uint8_t type,
+					uint8_t expected_type,
+					uint8_t last_acked_frame,
+					uint8_t expected_seqnum,
+					uint8_t received_seqnum)
+{
+	if (!is_frame_ok(rcvd_bytes, type)) return (0);
+	if (type != expected_type) {
 		wrong_packet_error(expected_type, type);
 		return(0);
 	}
-	return(1);
+
+	if (received_seqnum >= s.window_size) {
+		if (last_acked_frame < received_seqnum && received_seqnum < last_acked_frame + s.window_size) {
+			return (1);
+		}
+	} else {
+		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) && (received_seqnum < (last_acked_frame + s.window_size))) {
+			return (1);
+		}
+	}
+	printf("gbn_rcv: %s packet out of order.\n", states[type]);
+	return(0);
 }
 
 int is_frame_ok(int rcvd_bytes, uint8_t type) {

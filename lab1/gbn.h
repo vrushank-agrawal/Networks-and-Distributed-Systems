@@ -20,8 +20,8 @@ extern int h_errno;
 extern int errno;
 
 /*----- Protocol parameters -----*/
-#define LOSS_PROB 1e-2    /* loss probability                            */
-#define CORR_PROB 1e-3    /* corruption probability                      */
+#define LOSS_PROB 0    /* loss probability                            */
+#define CORR_PROB 0    /* corruption probability                      */
 #define DATALEN   1024    /* length of the payload                       */
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
@@ -96,8 +96,9 @@ void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
 int rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
 		socklen_t *socklen, uint8_t type);
 void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts,
-	int* i, uint8_t* frame_counter);
-int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type);
+	int* i, uint8_t* frame_counter, uint8_t* last_acked_frame);
+int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type,
+	uint8_t last_acked_frame, uint8_t expected_seqnum, uint8_t received_seqnum);
 int is_frame_ok(int rcvd_bytes, uint8_t type);
 
 #endif
