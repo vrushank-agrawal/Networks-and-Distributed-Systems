@@ -95,8 +95,8 @@ void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int da
 void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
 int rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
 		socklen_t *socklen, uint8_t type);
-void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts,
-	int* i, uint8_t* frame_counter, uint8_t* last_acked_frame);
+void reset_frame_counter(uint8_t expected, uint8_t received, int* attempts,
+	int* i, uint8_t* frame_counter, uint8_t last_acked_frame);
 int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type,
 	uint8_t last_acked_frame, uint8_t expected_seqnum, uint8_t received_seqnum);
 int is_frame_ok(int rcvd_bytes, uint8_t type);

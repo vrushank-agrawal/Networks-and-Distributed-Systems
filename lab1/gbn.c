@@ -31,8 +31,8 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 	gbnhdr *ack_frame = calloc(1, sizeof(gbnhdr));
 	/*----- Splitting the data into multiple frames -----*/
-	s.window_size = 8;
-	int max_seqnum = 2 * s.window_size;
+	s.window_size = 1;
+	int max_seqnum = 256;
 	int num_frames = (len % DATALEN == 0) ? len/DATALEN : len/DATALEN + 1;
 	int last_frame_size = (int)len % DATALEN;
 	/* printf("Last frame size: %d\n", last_frame_size); */
@@ -62,8 +62,8 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	int i = 0;
 	int rcvd_bytes;
 
-	/*----- Sending the frames -----*/
-	while (i < num_frames)
+	/*----- Sending the frames until last DATAACK rcvd -----*/
+	while (i < num_frames || last_acked_frame != (num_frames - 1) % max_seqnum)
 	{
 		if (s.curr_state != ESTABLISHED) {
 			printf("gbn_send: Connection not ESTABLISHED.\n");
@@ -90,14 +90,15 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 		/******************* Check if ACK frame correct *******************/
 		if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK, last_acked_frame, expected_ack, ack_frame->seqnum)) {
-			reset_frame_counter(&expected_ack, &ack_frame->seqnum, &attempts, &i, &frame_counter, &last_acked_frame);
+			reset_frame_counter(expected_ack, ack_frame->seqnum, &attempts, &i, &frame_counter, last_acked_frame);
 		} else {
 			last_acked_frame = ack_frame->seqnum;
+			printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
 		}
-		printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
 	}
 	printf("All frames sent.\n");
 
+	/*----- Freeing the memory -----*/
 	free(ack_frame);
 	for (j = 0; j < num_frames; j++)
 		free(frames[j].frame);
@@ -110,7 +111,6 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 
 	gbnhdr *frame = calloc(1, sizeof(gbnhdr));
 	int rcvd_bytes = 0;
-	uint8_t largest_seqnum_rcvd = -1;
 
 	while(!flags) {
 		/*----- Waiting for a frame -----*/
@@ -118,7 +118,8 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		if (!is_frame_ok(rcvd_bytes, frame->type)) continue;
 
 		/*----- Received a DATA frame -----*/
-		if (frame->type == DATA) {
+		if (frame->type == DATA)
+		{
 			printf("DATA frame received.\n");
 			rcvd_bytes -= 4;
 			memcpy(buf, frame->data, rcvd_bytes);
@@ -126,18 +127,17 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 			/* printf("Data: \n%s\n", (char *)buf); */
 
 			/*----- Sending a DATAACK for the last consecutive frame received -----*/
-			if (frame->seqnum - 1 == largest_seqnum_rcvd) {
-				send_packet(frame, sockfd, DATAACK, frame->seqnum, 0);
-				largest_seqnum_rcvd = frame->seqnum;
-			} else {
-				send_packet(frame, sockfd, DATAACK, largest_seqnum_rcvd, 0);
-			}
-			printf("DATAACK frame sent.\n");
+			printf("Last seqnum: %i\n", s.seqnum);
+			if ((uint8_t)(frame->seqnum - 1) == s.seqnum)
+				s.seqnum = (uint8_t)(frame->seqnum);
+			send_packet(frame, sockfd, DATAACK, s.seqnum, 0);
+			printf("DATAACK frame %i sent.\n", s.seqnum);
 			flags = 1;
 		}
 
 		/*----- The connection is being closed -----*/
-		else if (frame->type == FIN) {
+		else if (frame->type == FIN)
+		{
 			printf("FIN frame received.\n");
 			update_state(FIN_RCVD);
 			flags = 1;
@@ -313,6 +313,7 @@ int gbn_accept(int sockfd, struct sockaddr *client, socklen_t *socklen){
 	/*----- Sending a SYNACK frame -----*/
 	send_packet(frame, sockfd, SYNACK, 0, 0);
 	update_state(ESTABLISHED);
+	s.seqnum = -1;
 	printf("SYNACK frame sent.\n");
 
 	free(frame);
@@ -491,13 +492,22 @@ void wrong_packet_error(uint8_t expected, uint8_t received) {
 	printf("Expected %s frame, received %s frame.\n", states[expected], states[received]);
 }
 
-void reset_frame_counter(uint8_t* expected, uint8_t* received, int* attempts, int* i, uint8_t* frame_counter, uint8_t* last_acked_frame) {
-	if (*expected == *received) {
+void reset_frame_counter(uint8_t expected, uint8_t received, int* attempts, int* i, uint8_t* frame_counter, uint8_t last_acked_frame) {
+	if (expected == received) {
 		*attempts = 0;
 		return;
 	}
+
+	(*attempts)++;
+	/* reset the frame counter */
+	*frame_counter = last_acked_frame;
+
+	/* normalize the expected frame window */
 	if (expected < last_acked_frame) expected += s.window_size;
-	attempts++;
+	/* reset the total frames sent */
+	*i -= (expected - last_acked_frame);
+	/* reduce the window size by half */
+	if (s.window_size > 1) s.window_size /= 2;
 }
 
 int is_frame_correct(int rcvd_bytes, uint8_t type,
@@ -518,11 +528,11 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 
 	/* Check if the frame is in the window */
 	if (received_seqnum >= s.window_size) {
-		if (last_acked_frame < received_seqnum && received_seqnum < last_acked_frame + s.window_size) {
+		if ((last_acked_frame < received_seqnum) && (received_seqnum <= last_acked_frame + s.window_size)) {
 			return (1);
 		}
 	} else {
-		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) && (received_seqnum < (last_acked_frame + s.window_size))) {
+		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) && (received_seqnum <= (last_acked_frame + s.window_size))) {
 			return (1);
 		}
 	}
