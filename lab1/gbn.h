@@ -4,6 +4,7 @@
 #include<sys/types.h>
 #include<sys/socket.h>
 #include<sys/ioctl.h>
+#include <sys/time.h>
 #include<signal.h>
 #include<unistd.h>
 #include<fcntl.h>
@@ -20,8 +21,8 @@ extern int h_errno;
 extern int errno;
 
 /*----- Protocol parameters -----*/
-#define LOSS_PROB 0    /* loss probability                            */
-#define CORR_PROB 0    /* corruption probability                      */
+#define LOSS_PROB 1e-2    /* loss probability                            */
+#define CORR_PROB 1e-3    /* corruption probability                      */
 #define DATALEN   1024    /* length of the payload                       */
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
@@ -69,7 +70,10 @@ enum {
 };
 
 extern state_t s;
+extern struct itimerval itimer;
+extern const char *states[];
 
+/*----- Function prototypes -----*/
 void gbn_init();
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen);
 int gbn_listen(int sockfd, int backlog);
@@ -87,6 +91,7 @@ uint16_t checksum(gbnhdr *frame);
 
 
 /*----- Auxiliary functions -----*/
+void timeout_handler(int signal);
 void update_state(uint8_t type);
 int validate_checksum(gbnhdr *frame);
 void gbnhdr_to_buffer(gbnhdr *frame, char *buffer, int buffer_size);

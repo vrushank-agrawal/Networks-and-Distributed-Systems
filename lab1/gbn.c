@@ -2,6 +2,20 @@
 
 state_t s;
 
+/* The timeout handler */
+void timeout_handler(int sig) {}
+
+/* Used for debugging */
+const char *states[] = {
+	"SYN",
+	"SYNACK",
+	"DATA",
+	"DATAACK",
+	"FIN",
+	"FINACK",
+	"RST"
+};
+
 /* The original checksum function was modified to
  * work with the gbnhdr struct for convenience */
 uint16_t checksum(gbnhdr *frame)
@@ -30,13 +44,15 @@ uint16_t checksum(gbnhdr *frame)
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 	gbnhdr *ack_frame = calloc(1, sizeof(gbnhdr));
+
 	/*----- Splitting the data into multiple frames -----*/
 	s.window_size = 1;
 	int max_seqnum = 256;
 	int num_frames = (len % DATALEN == 0) ? len/DATALEN : len/DATALEN + 1;
 	int last_frame_size = (int)len % DATALEN;
-	/* printf("Last frame size: %d\n", last_frame_size); */
 	frame_t *frames = calloc(num_frames, sizeof(frame_t));
+
+	/* int alarms[max_seqnum]; */
 
 	/*----- Creating the frames -----*/
 	uint8_t j;
@@ -71,7 +87,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		}
 
 		if (attempts > MAX_ATTEMPTS) {
-			printf("TIMEOUT data could not be sent.\n");
+			printf("Attempts exhausted. data could not be sent.\n");
 			exit(-1);
 		}
 
@@ -79,6 +95,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		do
 		{
 			send_packet((gbnhdr *)frames[i].frame_addr, sockfd, DATA, frames[i].seqnum, frames[i].len);
+			alarm(TIMEOUT);
 			expected_ack = (++frame_counter) % max_seqnum;
 			frame_counter %= max_seqnum;
 			i++;
@@ -92,8 +109,11 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK, last_acked_frame, expected_ack, ack_frame->seqnum)) {
 			reset_frame_counter(expected_ack, ack_frame->seqnum, &attempts, &i, &frame_counter, last_acked_frame);
 		} else {
+			attempts = 0;
 			last_acked_frame = ack_frame->seqnum;
-			printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
+			if (expected_ack != last_acked_frame)
+				printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
+			alarm(0);
 		}
 	}
 	printf("All frames sent.\n");
@@ -120,18 +140,32 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		/*----- Received a DATA frame -----*/
 		if (frame->type == DATA)
 		{
-			printf("DATA frame received.\n");
+			/*----- Check if the frame is correct -----*/
+			if (frame->seqnum != (uint8_t)(s.seqnum + 1)) {
+				printf("gbn_recv: DATA frame out of order. Expected %i, received %i.\n", s.seqnum + 1, frame->seqnum);
+
+				/*----- Sending a DATAACK for the last consecutive frame received -----*/
+				send_packet(frame, sockfd, DATAACK, s.seqnum, 0);
+				printf("DATAACK frame %i sent.\n", s.seqnum);
+
+				/*----- Continue to the next iteration -----*/
+				continue;
+			}
+
+			/*----- First 4 bytes are the header -----*/
 			rcvd_bytes -= 4;
 			memcpy(buf, frame->data, rcvd_bytes);
-			printf("Data Size = %d\t seqnum: %i\n", rcvd_bytes, frame->seqnum);
-			/* printf("Data: \n%s\n", (char *)buf); */
 
 			/*----- Sending a DATAACK for the last consecutive frame received -----*/
-			printf("Last seqnum: %i\n", s.seqnum);
 			if ((uint8_t)(frame->seqnum - 1) == s.seqnum)
+				/* Store the frame seqnum in the global state */
 				s.seqnum = (uint8_t)(frame->seqnum);
+
+			/*----- Sending a DATAACK for the last consecutive frame received -----*/
 			send_packet(frame, sockfd, DATAACK, s.seqnum, 0);
 			printf("DATAACK frame %i sent.\n", s.seqnum);
+
+			/*----- Exit the loop -----*/
 			flags = 1;
 		}
 
@@ -140,6 +174,8 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		{
 			printf("FIN frame received.\n");
 			update_state(FIN_RCVD);
+
+			/*----- Exit the loop -----*/
 			flags = 1;
 		}
 
@@ -148,6 +184,8 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	}
 
 	free(frame);
+
+	/*----- If the connection is being closed, tell the receiver -----*/
 	if (s.curr_state == FIN_RCVD)
 		return(0);
 
@@ -156,7 +194,7 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 
 int gbn_close(int sockfd){
 
-	int result, attempts = 0;
+	int result = 0, attempts = 0, rcvd_bytes = 0;
 	gbnhdr *frame = calloc(1, sizeof(gbnhdr));
 
 	/*----- Sending the FIN frame -----*/
@@ -165,16 +203,18 @@ int gbn_close(int sockfd){
 		/* Try MAX_ATTEMPTS times */
 		if (attempts > MAX_ATTEMPTS)
 		{
-			printf("TIMEOUT Connection could not be closed.\n");
+			printf("attempts: %i\n", attempts);
+			printf("Attempts exhausted. Connection could not be closed.\n");
 			exit(-1);
 		}
 
-		/* Sender's side */
+		/******************* Sender's side ********************/
 		/* If the connection is established, send a FIN frame */
 		else if (s.curr_state == ESTABLISHED)
 		{
 			attempts++;
 			send_packet(frame, sockfd, FIN, 0, 0);
+			alarm(TIMEOUT);
 			printf("FIN frame sent.\n");
 			update_state(FIN_SENT);
 		}
@@ -182,17 +222,24 @@ int gbn_close(int sockfd){
 		/* If the connection is in FIN_SENT state, wait for a FINACK frame */
 		else if (s.curr_state == FIN_SENT)
 		{
-			rcv(sockfd, frame, &s.dest_addr, &s.dest_sock_len, FINACK);
-			if (frame->type != FINACK) wrong_packet_error(FINACK, frame->type);
-			printf("FINACK frame received.\n");
-			if ((result = close(sockfd)) == -1){
-				perror("socket could not close.");
-				exit(-1);
+			rcvd_bytes = rcv(sockfd, frame, &s.dest_addr, &s.dest_sock_len, FINACK);
+			if (!is_frame_ok(rcvd_bytes, frame->type)) {
+				update_state(ESTABLISHED);
+			} else if (frame->type != FINACK) {
+				update_state(ESTABLISHED);
+				wrong_packet_error(FINACK, frame->type);
+			} else {
+				printf("FINACK frame received.\n");
+				if ((result = close(sockfd)) == -1){
+					perror("socket could not close.");
+					exit(-1);
+				}
+				update_state(CLOSED);
+				alarm(0);
 			}
-			update_state(CLOSED);
 		}
 
-		/* Receiver's side */
+		/******************* Receiver's side ********************/
 		/* If the connection is in FIN_RCVD state, send a FINACK frame */
 		else if (s.curr_state == FIN_RCVD)
 		{
@@ -205,12 +252,11 @@ int gbn_close(int sockfd){
 			update_state(CLOSED);
 		}
 
-		/* Apocalyptic scenario */
+		/******************* Apolcalyptic scenario ********************/
 		else {
 			printf("gbn_close: This should never happen.\n");
 			exit(-1);
 		}
-
 	}
 
 	printf("Socket %d closed.\n", sockfd);
@@ -218,10 +264,11 @@ int gbn_close(int sockfd){
 	return(result);
 }
 
-/* Used by sender (client) to establish connection */
+/* Used by sender to establish connection */
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
 	int attempts = 0;
+	int rcvd_bytes = 0;
 	gbnhdr *frame = calloc(1, sizeof(gbnhdr));
 
 	/*----- Setting the destination (server) details -----*/
@@ -234,7 +281,7 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 		/* Try MAX_ATTEMPTS times */
 		if (attempts > MAX_ATTEMPTS)
 		{
-			printf("TIMEOUT Connection could not be established.\n");
+			printf("Attempts exhausted. Connection could not be established.\n");
 			exit(-1);
 		}
 
@@ -243,6 +290,7 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 		{
 			attempts++;
 			send_packet(frame, sockfd, SYN, 0, 0);
+			alarm(TIMEOUT);
 			printf("SYN frame sent.\n");
 			update_state(SYN_SENT);
 		}
@@ -250,12 +298,18 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 		/* If the connection is in SYN_SENT state, wait for a SYNACK frame */
 		else if (s.curr_state == SYN_SENT)
 		{
-			/* TODO: Set the timeout value to TIMEOUT seconds */
+			rcvd_bytes = rcv(sockfd, frame, &s.dest_addr, &s.dest_sock_len, SYNACK);
 
-			rcv(sockfd, frame, &s.dest_addr, &s.dest_sock_len, SYNACK);
-			if (frame->type != SYNACK) wrong_packet_error(SYNACK, frame->type);
-			printf("SYNACK frame received.\n");
-			update_state(ESTABLISHED);
+			if (!is_frame_ok(rcvd_bytes, frame->type)) {
+				update_state(CLOSED);
+			} else if (frame->type != SYNACK) {
+				update_state(CLOSED);
+				wrong_packet_error(SYNACK, frame->type);
+			} else {
+				printf("SYNACK frame received.\n");
+				update_state(ESTABLISHED);
+				alarm(0);
+			}
 		}
 	}
 
@@ -268,7 +322,6 @@ int gbn_listen(int sockfd, int backlog){
 }
 
 int gbn_bind(int sockfd, const struct sockaddr *server, socklen_t socklen){
-
 	int result = bind(sockfd, server, socklen);
 	if (result == -1){
 		perror("socket could not bind.");
@@ -293,6 +346,13 @@ int gbn_socket(int domain, int type, int protocol){
 	/*----- If socket is opened the connection is still closed -----*/
 	update_state(CLOSED);
 	printf("Socket %d created.\n", sockfd);
+
+	/*----- Setting the timeout handler -----*/
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = timeout_handler;
+	sigaction(SIGALRM, &sa, NULL);
+
 	return(sockfd);
 }
 
@@ -329,6 +389,9 @@ ssize_t maybe_recvfrom(int s, char *buf, size_t len, int flags,
 		/*----- Receiving the frame -----*/
 		int retval = recvfrom(s, buf, len, flags, from, fromlen);
 
+		/*----- Timeout -----*/
+		if (retval == -1) return(-1);
+
 		/*----- Packet corrupted -----*/
 		if (rand() < CORR_PROB*RAND_MAX){
 			/*----- Selecting a random byte inside the frame -----*/
@@ -346,7 +409,7 @@ ssize_t maybe_recvfrom(int s, char *buf, size_t len, int flags,
 		return retval;
 	}
 	/*----- Packet lost -----*/
-	return(-1);  /* Simulate a success */
+	return(-3);  /* Simulate a success */
 }
 
 ssize_t maybe_sendto(int s, const void *buf, size_t len, int flags, \
@@ -386,24 +449,12 @@ ssize_t maybe_sendto(int s, const void *buf, size_t len, int flags, \
 *                       Auxiliary Functions                       *
 *******************************************************************/
 
-/* Used for debugging */
-const char *states[] = {
-	"SYN",
-	"SYNACK",
-	"DATA",
-	"DATAACK",
-	"FIN",
-	"FINACK",
-	"RST"
-};
-
 void update_state(uint8_t state) {
 	s.curr_state = state;
 }
 
 int validate_checksum(gbnhdr *frame) {
 	uint16_t resultsum = checksum(frame);
-	/* printf("Checksum: %d | Resultsum: %d\n", frame->checksum, resultsum); */
 	if (resultsum == frame->checksum)
 		return 1;
 	else
@@ -435,9 +486,6 @@ void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int da
 	frame->type = type;
 	frame->seqnum = seqnum;
 	frame->checksum = checksum(frame);
-
-	/* printf("Data sending type: %i\tseqnum: %i\t", frame->type, frame->seqnum);
-	printf("%s\n", (char *)frame->data);*/
 
 	/* Convert the frame to a buffer */
 	char *buf = calloc(1, data_len + 4);
@@ -474,8 +522,11 @@ int rcv(int sockfd, gbnhdr *frame, struct sockaddr *from, socklen_t *socklen, ui
 	memset(buffer, 0, sizeof(*frame));
 	int rcvd_bytes = maybe_recvfrom(sockfd, buffer, sizeof(*frame), 0, from, socklen);
 
-	/* If the frame was not received, return -1 */
+	/* Timeout */
 	if (rcvd_bytes == -1) return(-1);
+
+	/* If the frame was not received, return -1 */
+	if (rcvd_bytes == -3) return(-3);
 
 	/* Convert the buffer to a frame */
 	buffer_to_gbnhdr(frame, buffer, sizeof(*frame));
@@ -528,13 +579,13 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 
 	/* Check if the frame is in the window */
 	if (received_seqnum >= s.window_size) {
-		if ((last_acked_frame < received_seqnum) && (received_seqnum <= last_acked_frame + s.window_size)) {
+		if ((last_acked_frame < received_seqnum) &&
+			(received_seqnum <= last_acked_frame + s.window_size))
 			return (1);
-		}
 	} else {
-		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) && (received_seqnum <= (last_acked_frame + s.window_size))) {
+		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) &&
+			(received_seqnum <= (last_acked_frame + s.window_size)))
 			return (1);
-		}
 	}
 
 	/* The frame is out of order */
@@ -544,7 +595,7 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 
 int is_frame_ok(int rcvd_bytes, uint8_t type) {
 	/* Check if the frame was received */
-	if (rcvd_bytes == -1) {
+	if (rcvd_bytes == -3) {
 		printf("gbn_rcv: %s frame lost.\n", states[type]);
 		return(0);
 	}
@@ -552,6 +603,11 @@ int is_frame_ok(int rcvd_bytes, uint8_t type) {
 	/* Check if the frame is corrupted */
 	else if (rcvd_bytes == -2) {
 		printf("gbn_rcv: %s frame corrupted.\n", states[type]);
+		return(0);
+	}
+
+	else if (rcvd_bytes == -1) {
+		printf("gbn_rcv: Timeout.\n");
 		return(0);
 	}
 
