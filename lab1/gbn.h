@@ -21,8 +21,8 @@ extern int h_errno;
 extern int errno;
 
 /*----- Protocol parameters -----*/
-#define LOSS_PROB 1e-2    /* loss probability                            */
-#define CORR_PROB 1e-3    /* corruption probability                      */
+#define LOSS_PROB 0    /* loss probability                            */
+#define CORR_PROB 0    /* corruption probability                      */
 #define DATALEN   1024    /* length of the payload                       */
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
@@ -52,6 +52,7 @@ typedef struct state_t{
 	uint8_t window_size;
 	struct sockaddr dest_addr;
 	socklen_t dest_sock_len;
+	int timeout;
 } state_t;
 
 typedef struct frame_t{
@@ -102,6 +103,7 @@ void wrong_packet_error(uint8_t expected, uint8_t received);
 void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int data_len);
 void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
 int is_frame_ok(int rcvd_bytes, uint8_t type);
+int out_of_window(uint8_t seqnum, uint8_t last_acked_frame, uint8_t window_size);
 int rcv(int sockfd,
 		gbnhdr *frame,
 		struct sockaddr *client,
@@ -118,7 +120,7 @@ void reset_frame_counter(uint8_t expected,
 void set_frame_counter( uint8_t received,
 						uint8_t* frame_counter,
 						uint8_t* last_acked_frame,
-						uint8_t* i,
+						int* i,
 						int* attempts);
 
 int is_frame_correct(int rcvd_bytes,

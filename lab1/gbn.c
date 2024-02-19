@@ -3,7 +3,14 @@
 state_t s;
 
 /* The timeout handler */
-void timeout_handler(int sig) {}
+void timeout_handler(int sig) {
+	/* reduce the window size by half */
+	if (s.window_size > 1) {
+		s.window_size /= 2;
+		s.timeout = 1;
+		printf("Window size reduced to %i\n", s.window_size);
+	}
+}
 
 /* Used for debugging */
 const char *states[] = {
@@ -46,24 +53,21 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	gbnhdr *ack_frame = calloc(1, sizeof(gbnhdr));
 
 	/*----- Splitting the data into multiple frames -----*/
-	s.window_size = 1;
-	int max_seqnum = 256;
 	int num_frames = (len % DATALEN == 0) ? len/DATALEN : len/DATALEN + 1;
 	int last_frame_size = (int)len % DATALEN;
 	frame_t *frames = calloc(num_frames, sizeof(frame_t));
 
-	/* int alarms[max_seqnum]; */
-
 	/*----- Creating the frames -----*/
-	uint8_t j;
+	int j;
 	for (j = 0; j < num_frames; j++)
 	{
 		frames[j].frame = calloc(1, sizeof(gbnhdr));
 		frames[j].frame_addr = (char *)frames[j].frame;
-		frames[j].seqnum = (j) % max_seqnum;
+		frames[j].seqnum = (j) % MAX_SEQNUM;
 		frames[j].len = DATALEN;
 		memset(frames[j].frame->data, 0, DATALEN);
  		memcpy(frames[j].frame->data, buf + j*DATALEN, DATALEN);
+		printf("Frame %i created.\n", j);
 	}
 	/*----- The last frame may have a different size -----*/
 	if (last_frame_size != 0)
@@ -79,7 +83,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	int rcvd_bytes;
 
 	/*----- Sending the frames until last DATAACK rcvd -----*/
-	while (i < num_frames || last_acked_frame != (num_frames - 1) % max_seqnum)
+	while (i < num_frames || last_acked_frame != (num_frames - 1) % MAX_SEQNUM)
 	{
 		if (s.curr_state != ESTABLISHED) {
 			printf("gbn_send: Connection not ESTABLISHED.\n");
@@ -92,31 +96,43 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		}
 
 		/******************* Send one window *******************/
-		do
-		{
-			send_packet((gbnhdr *)frames[i].frame_addr, sockfd, DATA, frames[i].seqnum, frames[i].len);
-			alarm(TIMEOUT);
-			expected_ack = (++frame_counter) % max_seqnum;
-			frame_counter %= max_seqnum;
-			i++;
-			printf("After sending frame: %i\ti: %i\tlast_acked_frame: %i\n", expected_ack, i, last_acked_frame);
-		} while ((frame_counter < (last_acked_frame + s.window_size) % max_seqnum) && (i < num_frames));
+		/*----- Send while all acked frames are received -----*/
+		if (i < num_frames) {
+			do {
+				send_packet((gbnhdr *)frames[i].frame_addr, sockfd, DATA, frames[i].seqnum, frames[i].len);
+				alarm(TIMEOUT);
+				expected_ack = (++frame_counter) % MAX_SEQNUM;
+				frame_counter %= MAX_SEQNUM;
+				i++;
+				printf("After sending frame: %i\ti: %i\tlast_acked_frame: %i\n", expected_ack, i, last_acked_frame);
+			} while ((frame_counter < (last_acked_frame + s.window_size) % MAX_SEQNUM) && (i < num_frames));
+		}
 
 		/******************* Waiting for an ACK frame *******************/
 		rcvd_bytes = rcv(sockfd, ack_frame, &s.dest_addr, &s.dest_sock_len, DATAACK);
 
 		/******************* Check if ACK frame correct *******************/
-		if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK, last_acked_frame, expected_ack, ack_frame->seqnum)) {
+		/*----- If the frame was not received, reset to zero -----*/
+		if (rcvd_bytes == -1 && i == 1) {
+			i = 0;
+			frame_counter = -1;
+		} else if (!is_frame_correct(rcvd_bytes, ack_frame->type, DATAACK, last_acked_frame, expected_ack, ack_frame->seqnum)) {
 			reset_frame_counter(expected_ack, ack_frame->seqnum, &attempts, &i, &frame_counter, last_acked_frame);
+		} else if (out_of_window(ack_frame->seqnum, last_acked_frame, expected_ack)) {
+			set_frame_counter(ack_frame->seqnum, &frame_counter, &last_acked_frame, &i, &attempts);
 		} else {
+			/*----- The frame is in the window stop the alarm -----*/
+			alarm(0);
+
+			/*----- If the timeout was not previously triggered, double the window size -----*/
+			if (!s.timeout && s.window_size < 128) s.window_size *= 2;
+
 			attempts = 0;
 			last_acked_frame = ack_frame->seqnum;
-			if (expected_ack != last_acked_frame)
-				printf("DATAACK frame %i received. Expected %i\n", ack_frame->seqnum, expected_ack);
-			alarm(0);
 		}
 	}
 	printf("All frames sent.\n");
+	printf("Last acked frame: %i\n", last_acked_frame);
 
 	/*----- Freeing the memory -----*/
 	free(ack_frame);
@@ -225,9 +241,13 @@ int gbn_close(int sockfd){
 			rcvd_bytes = rcv(sockfd, frame, &s.dest_addr, &s.dest_sock_len, FINACK);
 			if (!is_frame_ok(rcvd_bytes, frame->type)) {
 				update_state(ESTABLISHED);
+			} else if (frame->type == DATAACK) {
+				attempts = 0;
+				continue;
 			} else if (frame->type != FINACK) {
 				update_state(ESTABLISHED);
 				wrong_packet_error(FINACK, frame->type);
+				attempts--;
 			} else {
 				printf("FINACK frame received.\n");
 				if ((result = close(sockfd)) == -1){
@@ -336,6 +356,10 @@ int gbn_socket(int domain, int type, int protocol){
 
 	/*----- Randomizing the seed. This is used by the rand() function -----*/
 	srand((unsigned)time(0));
+
+	/*----- Setting the state variables -----*/
+	s.timeout = 0;
+	s.window_size = 1;
 
 	int sockfd = socket(domain, type, protocol);
 	if (sockfd == -1){
@@ -543,7 +567,18 @@ void wrong_packet_error(uint8_t expected, uint8_t received) {
 	printf("Expected %s frame, received %s frame.\n", states[expected], states[received]);
 }
 
-void reset_frame_counter(uint8_t expected, uint8_t received, int* attempts, int* i, uint8_t* frame_counter, uint8_t last_acked_frame) {
+/* If there is an error in receiving DATAACK frames, reset the
+ * frame counter and the total frames sent to resend the frames */
+void reset_frame_counter(uint8_t expected,
+						uint8_t received,
+						int* attempts,
+						int* i,
+						uint8_t* frame_counter,
+						uint8_t last_acked_frame)
+{
+	printf("\nEntering reset_frame_counter\n");
+	printf("Expected: %i\tReceived: %i\t i: %i\t frame_counter: %i\t last_acked_frame: %i\n", expected, received, *i, *frame_counter, last_acked_frame);
+
 	if (expected == received) {
 		*attempts = 0;
 		return;
@@ -555,10 +590,57 @@ void reset_frame_counter(uint8_t expected, uint8_t received, int* attempts, int*
 
 	/* normalize the expected frame window */
 	if (expected < last_acked_frame) expected += s.window_size;
+
 	/* reset the total frames sent */
 	*i -= (expected - last_acked_frame);
-	/* reduce the window size by half */
-	if (s.window_size > 1) s.window_size /= 2;
+
+	printf("Expected: %i\tReceived: %i\ti: %i\tframe_counter: %i\tlast_acked: %i\n", expected, received, *i, *frame_counter, last_acked_frame);
+}
+
+/*------------ Check if the frame is in the window ------------*/
+int out_of_window(uint8_t received_seqnum, uint8_t last_acked_frame, uint8_t expected_seqnum) {
+	/* Frames after the last_acked_frame are not received */
+	if (received_seqnum == last_acked_frame) return (1);
+
+	if (received_seqnum >= s.window_size) {
+		if ((last_acked_frame < received_seqnum) &&
+			(received_seqnum <= last_acked_frame + s.window_size))
+			return (0);
+	} else {
+		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) &&
+			(received_seqnum <= (last_acked_frame + s.window_size)))
+			return (0);
+	}
+
+	/* The frame is out of order */
+	printf("Expected:%i\t Received: %i\t Window: %i\n", expected_seqnum, received_seqnum, s.window_size);
+	return (1);
+}
+
+void set_frame_counter( uint8_t received,
+						uint8_t* frame_counter,
+						uint8_t* last_acked_frame,
+						int* i,
+						int* attempts)
+{
+	printf("\nEntering set_frame_counter\n");
+	printf("Received: %i\tFrame_counter: %i\tLast_acked: %i\t i: %i\n", received, *frame_counter, *last_acked_frame, *i);
+
+	if (*i > MAX_SEQNUM)
+		*i -= (*frame_counter + MAX_SEQNUM - received);
+	else
+		*i = received + 1;
+	*frame_counter = received;
+	*last_acked_frame = received;
+	*attempts = 0;
+
+	if (s.window_size > 1) {
+		s.window_size /= 2;
+		s.timeout = 1;
+		printf("Window size reduced to %i\n", s.window_size);
+	}
+
+	printf("Received: %i\tFrame_counter: %i\tLast_acked: %i\t i: %i\n", received, *frame_counter, *last_acked_frame, *i);
 }
 
 int is_frame_correct(int rcvd_bytes, uint8_t type,
@@ -577,20 +659,7 @@ int is_frame_correct(int rcvd_bytes, uint8_t type,
 		return(0);
 	}
 
-	/* Check if the frame is in the window */
-	if (received_seqnum >= s.window_size) {
-		if ((last_acked_frame < received_seqnum) &&
-			(received_seqnum <= last_acked_frame + s.window_size))
-			return (1);
-	} else {
-		if (((expected_seqnum - s.window_size) < received_seqnum + s.window_size) &&
-			(received_seqnum <= (last_acked_frame + s.window_size)))
-			return (1);
-	}
-
-	/* The frame is out of order */
-	printf("gbn_rcv: %s frame out of order.\n", states[type]);
-	return(0);
+	return(1);
 }
 
 int is_frame_ok(int rcvd_bytes, uint8_t type) {
