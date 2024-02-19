@@ -67,7 +67,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		frames[j].len = DATALEN;
 		memset(frames[j].frame->data, 0, DATALEN);
  		memcpy(frames[j].frame->data, buf + j*DATALEN, DATALEN);
-		printf("Frame %i created.\n", j);
 	}
 	/*----- The last frame may have a different size -----*/
 	if (last_frame_size != 0)
@@ -125,7 +124,10 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			alarm(0);
 
 			/*----- If the timeout was not previously triggered, double the window size -----*/
-			if (!s.timeout && s.window_size < 128) s.window_size *= 2;
+			if (!s.timeout && s.window_size < 16) {
+				s.window_size *= 2;
+				printf("Window size doubled to %i\n", s.window_size);
+			}
 
 			attempts = 0;
 			last_acked_frame = ack_frame->seqnum;
@@ -158,8 +160,6 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		{
 			/*----- Check if the frame is correct -----*/
 			if (frame->seqnum != (uint8_t)(s.seqnum + 1)) {
-				printf("gbn_recv: DATA frame out of order. Expected %i, received %i.\n", s.seqnum + 1, frame->seqnum);
-
 				/*----- Sending a DATAACK for the last consecutive frame received -----*/
 				send_packet(frame, sockfd, DATAACK, s.seqnum, 0);
 				printf("DATAACK frame %i sent.\n", s.seqnum);
@@ -576,8 +576,10 @@ void reset_frame_counter(uint8_t expected,
 						uint8_t* frame_counter,
 						uint8_t last_acked_frame)
 {
-	printf("\nEntering reset_frame_counter\n");
-	printf("Expected: %i\tReceived: %i\t i: %i\t frame_counter: %i\t last_acked_frame: %i\n", expected, received, *i, *frame_counter, last_acked_frame);
+	if (s.window_size > 1) {
+		s.window_size = 1;
+		s.timeout = 1;
+	}
 
 	if (expected == received) {
 		*attempts = 0;
@@ -593,12 +595,16 @@ void reset_frame_counter(uint8_t expected,
 
 	/* reset the total frames sent */
 	*i -= (expected - last_acked_frame);
-
-	printf("Expected: %i\tReceived: %i\ti: %i\tframe_counter: %i\tlast_acked: %i\n", expected, received, *i, *frame_counter, last_acked_frame);
 }
 
 /*------------ Check if the frame is in the window ------------*/
 int out_of_window(uint8_t received_seqnum, uint8_t last_acked_frame, uint8_t expected_seqnum) {
+
+	if (s.window_size > 1) {
+		s.window_size = 1;
+		s.timeout = 1;
+	}
+
 	/* Frames after the last_acked_frame are not received */
 	if (received_seqnum == last_acked_frame) return (1);
 
@@ -623,11 +629,8 @@ void set_frame_counter( uint8_t received,
 						int* i,
 						int* attempts)
 {
-	printf("\nEntering set_frame_counter\n");
-	printf("Received: %i\tFrame_counter: %i\tLast_acked: %i\t i: %i\n", received, *frame_counter, *last_acked_frame, *i);
-
 	if (*i > MAX_SEQNUM)
-		*i -= (*frame_counter + MAX_SEQNUM - received);
+		*i -= (*frame_counter - received);
 	else
 		*i = received + 1;
 	*frame_counter = received;
@@ -635,12 +638,9 @@ void set_frame_counter( uint8_t received,
 	*attempts = 0;
 
 	if (s.window_size > 1) {
-		s.window_size /= 2;
+		s.window_size = 1;
 		s.timeout = 1;
-		printf("Window size reduced to %i\n", s.window_size);
 	}
-
-	printf("Received: %i\tFrame_counter: %i\tLast_acked: %i\t i: %i\n", received, *frame_counter, *last_acked_frame, *i);
 }
 
 int is_frame_correct(int rcvd_bytes, uint8_t type,
