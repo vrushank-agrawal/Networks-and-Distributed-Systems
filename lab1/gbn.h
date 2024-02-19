@@ -27,6 +27,7 @@ extern int errno;
 #define N         1024    /* Max number of packets a single call to gbn_send can process */
 #define TIMEOUT      1    /* timeout to resend packets (1 second)        */
 #define MAX_ATTEMPTS 5    /* max number of attempts to send a frame     */
+#define MAX_SEQNUM   256  /* max sequence number                         */
 
 /*----- Packet types -----*/
 #define SYN      0        /* Opens a connection                          */
@@ -83,12 +84,14 @@ int gbn_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 int gbn_close(int sockfd);
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags);
 ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags);
-
-ssize_t  maybe_recvfrom(int  s, char *buf, size_t len, int flags, \
-            struct sockaddr *from, socklen_t *fromlen);
-
 uint16_t checksum(gbnhdr *frame);
 
+ssize_t  maybe_recvfrom(int s,
+						char *buf,
+						size_t len,
+						int flags,
+			            struct sockaddr *from,
+						socklen_t *fromlen);
 
 /*----- Auxiliary functions -----*/
 void timeout_handler(int signal);
@@ -98,12 +101,31 @@ void gbnhdr_to_buffer(gbnhdr *frame, char *buffer, int buffer_size);
 void wrong_packet_error(uint8_t expected, uint8_t received);
 void send_packet(gbnhdr *frame, int sockfd, uint8_t type, uint8_t seqnum, int data_len);
 void buffer_to_gbnhdr(gbnhdr *frame, char *buffer, int buffer_size);
-int rcv(int sockfd, gbnhdr *frame, struct sockaddr *client,
-		socklen_t *socklen, uint8_t type);
-void reset_frame_counter(uint8_t expected, uint8_t received, int* attempts,
-	int* i, uint8_t* frame_counter, uint8_t last_acked_frame);
-int is_frame_correct(int rcvd_bytes, uint8_t type, uint8_t expected_type,
-	uint8_t last_acked_frame, uint8_t expected_seqnum, uint8_t received_seqnum);
 int is_frame_ok(int rcvd_bytes, uint8_t type);
+int rcv(int sockfd,
+		gbnhdr *frame,
+		struct sockaddr *client,
+		socklen_t *socklen,
+		uint8_t type);
+
+void reset_frame_counter(uint8_t expected,
+						uint8_t received,
+						int* attempts,
+						int* i,
+						uint8_t* frame_counter,
+						uint8_t last_acked_frame);
+
+void set_frame_counter( uint8_t received,
+						uint8_t* frame_counter,
+						uint8_t* last_acked_frame,
+						uint8_t* i,
+						int* attempts);
+
+int is_frame_correct(int rcvd_bytes,
+					uint8_t type,
+					uint8_t expected_type,
+					uint8_t last_acked_frame,
+					uint8_t expected_seqnum,
+					uint8_t received_seqnum);
 
 #endif
