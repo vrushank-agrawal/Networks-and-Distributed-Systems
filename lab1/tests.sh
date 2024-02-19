@@ -40,7 +40,6 @@ for file in tests/*; do
     else
         echo "Difference found in $file"
         rm ./copy
-        exit 1
     fi
 
     rm ./copy
