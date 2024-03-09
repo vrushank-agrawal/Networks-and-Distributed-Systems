@@ -54,6 +54,8 @@ class ClientHandler(Thread):
                 except:
                     #print sys.exc_info()
                     self.valid = False
+                    if debug:
+                        print(f'[DEBUG] Closing {self.index}')
                     del threads[self.index]
                     self.sock.close()
                     break
@@ -76,6 +78,9 @@ def send(index, data, set_wait=False):
     pid = int(index)
     if set_wait:
         wait_chat_log = True
+    if debug:
+        print(f'[DEBUG] pid: {pid}')
+        print(f'[DEBUG] Threads: {threads}')
     threads[pid].send(data)
 
 def exit(exit=False):
@@ -89,6 +94,7 @@ def exit(exit=False):
 
     time.sleep(2)
     for k in threads:
+        print(f'[DEBUG] Closing {k}')
         threads[k].close()
     subprocess.Popen(['./stopall'], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
     sys.stdout.flush()
@@ -118,6 +124,9 @@ def main():
             exit()
         sp1 = line.split(None, 1)
         sp2 = line.split()
+        if debug:
+            print(f'[DEBUG] sp1: {sp1}')
+            print(f'[DEBUG] sp2: {sp2}')
         if len(sp1) != 2: # validate input
             continue
         pid = int(sp2[0]) # first field is pid
@@ -133,7 +142,8 @@ def main():
                 time.sleep(2)
             # start the process
             if debug:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], shell=True, stdout=sys.stdout, stderr=sys.stderr)
+                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
+                # subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], shell=True, stdout=sys.stdout, stderr=sys.stderr)
             else:
                 subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
             # sleep for a while to allow the process be ready
@@ -145,6 +155,10 @@ def main():
         else:
             if cmd == 'msg': # message msgid msg
                 msgs[int(sp2[2])] = sp1[1]
+                if debug:
+                    print(f'[DEBUG] sp2[2]: {sp2[2]}')
+                    print(f'[DEBUG] sp1[1]: {sp1[1]}')
+                    print(f'[DEBUG] msgs: {msgs}')
                 send(pid, sp1[1])
             elif cmd[:5] == 'crash': # crashXXX
                 send(pid, sp1[1])
