@@ -4,40 +4,50 @@
 #include "libraries.hpp"
 #include "messages.hpp"
 
+typedef struct ClientInfo {
+    struct sockaddr_in address;
+    int socket;
+    int port;
+    std::vector<std::string> messageParts;
+    char* message;
+} ClientInfo;
+
 class Server {
-    private:
-        int port;
-
-        int serverSocket;
-        struct sockaddr_in clientAddress;
-        socklen_t clientAddressLength = sizeof(this->clientAddress);
-        int clientSocket;
-        int clientPort;
-
-        std::vector<std::string> messageParts;
-        StatusMessage status;
-
     public:
         Server(int port);
         ~Server();
-
-        /* Server-Socket interaction */
         void start();
         void listenClient();
-        void acceptClient();
-        void readMessage();
-        void decodeMessage();
-        void closeConnection();
+
+    private:
+        /* Data */
+        int port;
+        int serverSocket;
+        socklen_t addressLength = sizeof(struct sockaddr_in);
+        ClientInfo* clients[3];
+        StatusMessage status;
+
+        /* Server-Socket interaction */
+        ClientInfo* acceptClient();
+        int addClient(ClientInfo* client);
+        void rcvMessages(int clientIndex);
+        void closeClient(int clientIndex);
+        void closeAllConnections();
+
+        /* Message processing */
+        void readMessage(int clientIndex);
+        void processMessage(int clientIndex);
+        void decodeMessage(int clientIndex);
 
         /* Server-Proxy interaction */
-        void logMessage();
+        void logMessage(int clientIndex);
         void crashSequence();
         void sendChatLog();
 
         /* Server-Server interaction */
-        void checkStatus();
-        void sendStatus();
-        void rumorMongering(int maxSeqNoRcvd);
+        void checkStatus(int clientIndex);
+        void sendStatus(int clientIndex);
+        void rumorMongering(int maxSeqNoRcvd, int clientIndex);
 };
 
 #endif
