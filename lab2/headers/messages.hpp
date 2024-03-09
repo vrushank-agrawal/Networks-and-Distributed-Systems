@@ -9,6 +9,7 @@ class RumorMessage {
         char* from;
         int seqNo;
         std::string chatText;
+
         void decomposeMessage();
 
     public:

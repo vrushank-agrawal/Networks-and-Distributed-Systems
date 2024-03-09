@@ -6,7 +6,7 @@ LDFLAGS         = -Wall -std=c++23
 
 CPPFILES        = $(wildcard *.cpp)
 MAINOBJS        = $(CPPFILES:.cpp=.o)
-ALLEXEC         = main
+ALLEXEC         = clean main
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@

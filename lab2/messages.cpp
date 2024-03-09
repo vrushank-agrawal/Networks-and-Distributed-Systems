@@ -26,6 +26,10 @@ int RumorMessage::getSeqNo() {
     return this->seqNo;
 }
 
+std::string RumorMessage::getMessage() {
+    return this->message;
+}
+
 
 /***********************
  * StatusMessage class *
@@ -44,6 +48,7 @@ void StatusMessage::updateStatus(int port, int seqNo) {
 }
 
 void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
+    std::cout << "Adding message " << seq << " to chat log" << std::endl;
     this->chatLog.push_back(message);
     this->updateMaxSeqNo(seq);
 }

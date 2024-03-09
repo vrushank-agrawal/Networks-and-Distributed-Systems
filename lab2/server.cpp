@@ -118,9 +118,8 @@ void Server::readMessage(int clientIndex) {
  * @param clientIndex The index of the client in the clients array
 */
 void Server::processMessage(int clientIndex) {
-    std::string message = this->clients[clientIndex]->message;
     this->clients[clientIndex]->messageParts = std::vector<std::string>();
-    std::stringstream ss(message);
+    std::stringstream ss(this->clients[clientIndex]->message);
     std::string part;
     while (ss >> part) {
         // printf("Part: %s\n", part.c_str());
@@ -135,7 +134,7 @@ void Server::processMessage(int clientIndex) {
 void Server::decodeMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     (messageParts[0] == "msg") ? this->logMessage(clientIndex)
-        : (messageParts[0] == "get" && messageParts[1] == "chatLog") ? this->sendChatLog()
+        : (messageParts[0] == "get" && messageParts[1] == "chatLog") ? this->sendChatLog(clientIndex)
         : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
         : (messageParts[0] == "crash") ? this->crashSequence()
         : void(std::cerr << "Error: Unknown message type" << std::endl);
@@ -147,10 +146,12 @@ void Server::decodeMessage(int clientIndex) {
 */
 void Server::rcvMessages(int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
+    std::cout << "Receiving messages from client " << client->port << "..." << std::endl;
 
     /* Rcv messages from client until disconnected */
     int n;
     while ((n = recv(client->socket, client->message, 255, 0)) > 0) {
+        std::cout << "Message: " << client->message << "\n";
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
     }
@@ -177,8 +178,28 @@ void Server::logMessage(int clientIndex) {
     this->status.addMessageToLog(rumor, seq);
 }
 
-void Server::sendChatLog() {
+/**
+ * @brief Send the chat log to the proxy
+ * @param clientIndex The index of the client in the clients array
+*/
+void Server::sendChatLog(int cliendIndex) {
+    std::string chatLog = "chatLog";
+    for (RumorMessage message : this->status.getChatLog()) {
+        chatLog += " " + message.getMessage() + ",";
+    }
 
+    const char* msg = chatLog.c_str();
+    int messageLength = strlen(msg);
+
+    int n = sendto(this->clients[cliendIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[cliendIndex]->address), this->addressLength);
+    if (n < 0) {
+        std::cerr << "Error: Could not send data to proxy! " << std::endl;
+        this->closeClient(cliendIndex);
+    }
+
+    /* Message sent */
+    std::cout << "chatLog: " << chatLog << std::endl;
+    std::cout << "chatLog sent to proxy" << std::endl;
 }
 
 /**
@@ -223,9 +244,12 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
 */
 void Server::sendStatus(int index) {
     ClientInfo* client = this->clients[index];
+
+    /* Create message for client */
     std::string statusMessage = "status " + std::to_string(this->status.getMaxSeqNo());
     const char* message = statusMessage.c_str();
     int messageLength = strlen(message);
+
     int n = sendto(client->socket, message, messageLength, 0, (struct sockaddr*)&(client->address), this->addressLength);
     if (n < 0) {
         std::cerr << "Error: Could not send data to " << client->port << std::endl;

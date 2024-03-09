@@ -42,7 +42,7 @@ class Server {
         /* Server-Proxy interaction */
         void logMessage(int clientIndex);
         void crashSequence();
-        void sendChatLog();
+        void sendChatLog(int index);
 
         /* Server-Server interaction */
         void checkStatus(int clientIndex);
