@@ -4,9 +4,14 @@
  * RumorMessage class  *
  ***********************/
 
-RumorMessage::RumorMessage(char* message) {
+RumorMessage::RumorMessage(int seq, char* message) {
+    this->seqNo = seq;
     this->message = message;
     // this->decomposeMessage();
+}
+
+void RumorMessage::decomposeMessage() {
+
 }
 
 std::string RumorMessage::getChatText() {
@@ -31,6 +36,20 @@ StatusMessage::StatusMessage() {}
 StatusMessage::StatusMessage(int port) {
     this->status[port+1] = 0;
     this->status[port-1] = 0;
+    this->maxSeqNo = 0;
+}
+
+void StatusMessage::updateStatus(int port, int seqNo) {
+    this->status[port] = seqNo;
+}
+
+void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
+    this->chatLog.push_back(message);
+    this->updateMaxSeqNo(seq);
+}
+
+void StatusMessage::updateMaxSeqNo(int seqNo) {
+    this->maxSeqNo = seqNo;
 }
 
 std::map<int, int> StatusMessage::getStatus() {
@@ -41,6 +60,18 @@ std::vector<RumorMessage> StatusMessage::getChatLog() {
     return this->chatLog;
 }
 
-void StatusMessage::updateStatus(int port, int seqNo) {
-    this->status[port] = seqNo;
+int StatusMessage::getMaxSeqNo() {
+    return this->maxSeqNo;
+}
+
+std::string StatusMessage::getMessage(int seqNo) {
+    for (RumorMessage message : this->chatLog) {
+        if (message.getSeqNo() == seqNo) {
+            return message.getChatText();
+        }
+    }
+
+    /* Message not found */
+    std::cerr << "Error: Message "<< seqNo << " not found in chatLog with maxSeqNo " << this->maxSeqNo << std::endl;
+    return "";
 }
