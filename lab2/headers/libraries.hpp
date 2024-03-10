@@ -12,5 +12,8 @@
 #include <cassert>
 #include <sstream>
 #include <thread>
+#include <chrono>
+#include <mutex>
+#include <shared_mutex>
 
 #endif

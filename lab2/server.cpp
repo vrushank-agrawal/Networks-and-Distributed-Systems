@@ -15,6 +15,7 @@ Server::~Server() {
     close(this->serverSocket);
     for (auto& client : this->clients)
         close(client->socket);
+    this->destroyThreads();
 }
 
 /**
@@ -42,11 +43,20 @@ void Server::start() {
  * @brief Listen for clients to connect
 */
 void Server::listenClient() {
-    std::cout << "Listening for clients..." << std::endl;
-    std::thread t[3];
+    /* Start thread to connect to left neighbor and detach it */
+    std::thread temp = std::thread(&Server::connectToLeftNeighbor, this);
+    temp.detach();
+    this->threads.emplace_back(std::move(temp));
 
+    /* Start thread to perform anti-entropy and detach it */
+    std::thread antiEntropyThread(&Server::antiEntropy, this);
+    antiEntropyThread.detach();
+    this->threads.emplace_back(std::move(antiEntropyThread));
+
+    std::cout << "Listening for clients..." << std::endl;
     while (true) {
-        if (listen(this->serverSocket, 3) < 0) {
+        /* Listen for only right neighbor and proxy */
+        if (listen(this->serverSocket, 2) < 0) {
             std::cerr << "Error: Could not listen" << std::endl;
             exit(1);
         }
@@ -59,12 +69,65 @@ void Server::listenClient() {
         this->decodeMessage(clientIndex);
 
         /* Start thread to rcv messages from client and detach it */
-        t[clientIndex] = std::thread(&Server::rcvMessages, this, clientIndex);
-        t[clientIndex].detach();
+        std::thread thread = std::thread(&Server::rcvMessages, this, clientIndex);
+        thread.detach();
+        this->threads.emplace_back(std::move(thread));
     }
 
     /* Join threads */
-    for (auto& thread : t) thread.join();
+    this->destroyThreads();
+}
+
+void Server::destroyThreads() {
+    for (auto& thread : this->threads) thread.join();
+}
+
+void Server::antiEntropy() {
+    std::cout << "Starting anti-entropy..." << std::endl;
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        int random = rand() % 2;
+        if (this->clientConnected(random)) {
+            this->sendStatus(random);
+        }
+    }
+}
+
+void Server::connectToLeftNeighbor() {
+    /* We reconnect to the left neighbor if the connection is lost */
+    while (true) {
+        std::cout << "Connecting to left neighbor..." << std::endl;
+
+        ClientInfo* left = new ClientInfo();
+        left->socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (left->socket < 0) {
+            std::cerr << "Error: Could not open socket" << std::endl;
+            exit(1);
+        }
+
+        left->address.sin_family = AF_INET;
+        left->address.sin_port = htons((this->port)-1);
+        left->address.sin_addr.s_addr = INADDR_ANY;
+
+        while (true) {
+            if (connect(left->socket, (struct sockaddr *) &left->address, addressLength) < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            } else {
+                left->port = (this->port)-1;
+                std::cout << "Connected to left neighbor " << (this->port)-1 << std::endl;
+                break;
+            }
+        }
+
+        /* Add left neighbor to zero index of clients array */
+        this->clients[0] = left;
+        this->rcvMessages(0);
+    }
+}
+
+
+bool Server::clientConnected(int clientIndex) {
+    return this->clients[clientIndex] != nullptr;
 }
 
 /**
@@ -86,15 +149,18 @@ ClientInfo* Server::acceptClient() {
  * @param client The client to add
 */
 int Server::addClient(ClientInfo* client) {
-    int filledIndex = -1;
-    for (int i = 0; i < 3; i++) {
-        if (this->clients[i] == nullptr) {
-        this->clients[i] = new ClientInfo(*client);
-            filledIndex = i;
-            break;
-        }
+    if (client->port == this->port+1) { /* Right neighbor */
+        this->clients[1] = client;
+        std::cout << "Connected to right neighbor " << this->port+1 << std::endl;
+        return 1;
+    } else if (client->port == this->port-1) { /* Left neighbor */
+        std::cerr << "Error: Left neighbor cannot send connect request" << std::endl;
+        exit(1);
+    } else { /* Proxy */
+        this->clients[2] = client;
+        std::cout << "Connected to proxy " << client->port << std::endl;
+        return 2;
     }
-    return filledIndex;
 }
 
 /**
@@ -109,7 +175,7 @@ void Server::readMessage(int clientIndex) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
     }
-    std::cout << "Message: " << buffer;
+    std::cout << "Message: " << buffer << std::endl;
     this->clients[clientIndex]->message = buffer;
 }
 
@@ -146,19 +212,18 @@ void Server::decodeMessage(int clientIndex) {
 */
 void Server::rcvMessages(int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
-    std::cout << "Receiving messages from client " << client->port << "..." << std::endl;
+    std::cout << "Receiving messages from client " << client->port << std::endl;
 
     /* Rcv messages from client until disconnected */
     int n;
     while ((n = recv(client->socket, client->message, 255, 0)) > 0) {
-        std::cout << "Message: " << client->message << "\n";
+        std::cout << "Message: " << client->message << std::endl;
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
     }
 
     /* The client has disconnected */
     if (n < 0) {
-        std::cerr << "Error: Could not read from socket" << std::endl;
         this->closeClient(clientIndex);
     }
 }
@@ -175,7 +240,10 @@ void Server::logMessage(int clientIndex) {
     char* message = (char*) messageParts[2].c_str();
 
     RumorMessage rumor(seq, message);
-    this->status.addMessageToLog(rumor, seq);
+    {   /* Lock the logMutex when adding message to chat log */
+        std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
+        this->status.addMessageToLog(rumor, seq);
+    }
 }
 
 /**
@@ -183,8 +251,13 @@ void Server::logMessage(int clientIndex) {
  * @param clientIndex The index of the client in the clients array
 */
 void Server::sendChatLog(int cliendIndex) {
+    /* Lock the logMutex when reading the chat log */
+    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+    std::vector<RumorMessage> chatLogMsgs = this->status.getChatLog();
+    shared_lock.unlock();
+
     std::string chatLog = "chatLog";
-    for (RumorMessage message : this->status.getChatLog()) {
+    for (RumorMessage message : chatLogMsgs) {
         chatLog += " " + message.getMessage() + ",";
     }
 
@@ -209,7 +282,12 @@ void Server::sendChatLog(int cliendIndex) {
 */
 void Server::checkStatus(int clientIndex) {
     int maxSeqNoRcvd = stoi(this->clients[clientIndex]->messageParts[1]);
+
+    /* Lock the logMutex when reading the max sequence number */
+    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
     int ourMaxSeqNo = this->status.getMaxSeqNo();
+    shared_lock.unlock();
+
     (maxSeqNoRcvd < ourMaxSeqNo) ? this->rumorMongering(maxSeqNoRcvd, clientIndex)
         : (maxSeqNoRcvd > ourMaxSeqNo) ? this->sendStatus(clientIndex)
         : void(); /* Stop rumor mongering */
@@ -223,8 +301,14 @@ void Server::checkStatus(int clientIndex) {
 void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
 
+    /* Lock the logMutex when reading the message */
+    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+    int maxSeqNo = this->status.getMaxSeqNo();
+    std::string m = this->status.getMessage(maxSeqNoRcvd+1).c_str();
+    shared_lock.unlock();
+
     /* Create message for client */
-    std::string message = "msg " + std::to_string(this->status.getMaxSeqNo()) + " " + this->status.getMessage(maxSeqNoRcvd+1);
+    std::string message = "msg " + std::to_string(maxSeqNo) + " " + m;
     const char* msg = message.c_str();
 
     int n = sendto(client->socket, msg, strlen(msg), 0, (struct sockaddr*)&(client->address), this->addressLength);
@@ -235,7 +319,7 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
     }
 
     /* Message sent */
-    std::cout << "Rumor mongering msg " << maxSeqNoRcvd+1 << "..." << std::endl;
+    std::cout << "Rumor mongering msg " << maxSeqNoRcvd+1 << std::endl;
 }
 
 /**
@@ -243,11 +327,19 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
  * @param index The index of the client in the clients array
 */
 void Server::sendStatus(int index) {
+    std::cout << "Sending status to " << this->clients[index]->port << std::endl;
     ClientInfo* client = this->clients[index];
 
+    /* Lock the logMutex when reading the max sequence number */
+    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+    int maxSeqNo = this->status.getMaxSeqNo();
+    shared_lock.unlock();
+
     /* Create message for client */
-    std::string statusMessage = "status " + std::to_string(this->status.getMaxSeqNo());
+    std::string statusMessage = "status " + std::to_string(maxSeqNo);
+    std::cout << "String message: " << statusMessage << std::endl;
     const char* message = statusMessage.c_str();
+    std::cout << "Char message: " << message << std::endl;
     int messageLength = strlen(message);
 
     int n = sendto(client->socket, message, messageLength, 0, (struct sockaddr*)&(client->address), this->addressLength);
@@ -263,6 +355,7 @@ void Server::sendStatus(int index) {
 void Server::crashSequence() {
     std::cout << "Crashing..." << std::endl;
     this->closeAllConnections();
+    this->destroyThreads();
     exit(0);
 }
 
@@ -270,7 +363,7 @@ void Server::crashSequence() {
  * @brief Close a client connection
 */
 void Server::closeClient(int clientIndex) {
-    std::cout << "Closing client connection " << this->clients[clientIndex]->port << "..." << std::endl;
+    std::cout << "Closing client connection " << this->clients[clientIndex]->port << std::endl;
     close(this->clients[clientIndex]->socket);
     delete this->clients[clientIndex];
     this->clients[clientIndex] = nullptr;

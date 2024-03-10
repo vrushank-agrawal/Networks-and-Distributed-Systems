@@ -25,7 +25,12 @@ class Server {
         int serverSocket;
         socklen_t addressLength = sizeof(struct sockaddr_in);
         ClientInfo* clients[3];
+
+        std::shared_mutex logMutex;
         StatusMessage status;
+        std::vector<std::thread> threads;
+
+        void destroyThreads();
 
         /* Server-Socket interaction */
         ClientInfo* acceptClient();
@@ -33,6 +38,9 @@ class Server {
         void rcvMessages(int clientIndex);
         void closeClient(int clientIndex);
         void closeAllConnections();
+        int checkConnections();
+        bool continueListen();
+        bool clientConnected(int clientIndex);
 
         /* Message processing */
         void readMessage(int clientIndex);
@@ -45,6 +53,8 @@ class Server {
         void sendChatLog(int index);
 
         /* Server-Server interaction */
+        void connectToLeftNeighbor();
+        void antiEntropy();
         void checkStatus(int clientIndex);
         void sendStatus(int clientIndex);
         void rumorMongering(int maxSeqNoRcvd, int clientIndex);
