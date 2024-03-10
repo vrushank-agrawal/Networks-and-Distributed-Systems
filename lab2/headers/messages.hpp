@@ -15,7 +15,9 @@ class RumorMessage {
     public:
         RumorMessage(int seq, char* message);
 
-        /* Getters */
+        /*****************************
+         * Getters                   *
+         * ***************************/
         std::string getMessage();
         char* getFrom();
         int getSeqNo();
@@ -32,12 +34,16 @@ class StatusMessage {
         StatusMessage();
         StatusMessage(int port);
 
-        /* Setters */
+        /*****************************
+         * Setters                   *
+         * ***************************/
         void updateStatus(int port, int seqNo);
         void addMessageToLog(RumorMessage message, int seq);
         void updateMaxSeqNo(int seqNo);
 
-        /* Getters */
+        /*****************************
+         * Getters                   *
+         * ***************************/
         std::map<int, int> getStatus();
         std::vector<RumorMessage> getChatLog();
         int getMaxSeqNo();

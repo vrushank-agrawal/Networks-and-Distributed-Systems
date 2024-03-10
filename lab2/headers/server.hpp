@@ -5,11 +5,11 @@
 #include "messages.hpp"
 
 typedef struct ClientInfo {
-    struct sockaddr_in address;
-    int socket;
-    int port;
-    std::vector<std::string> messageParts;
-    char* message;
+    struct sockaddr_in address;     /**< Client address */
+    int socket;                     /**< Client socket */
+    int port;                       /**< Client port */
+    char* message;                  /**< Message from client */
+    std::vector<std::string> messageParts;  /**< Message divided into 3 parts */
 } ClientInfo;
 
 class Server {
@@ -20,7 +20,9 @@ class Server {
         void listenClient();
 
     private:
-        /* Data */
+        /*****************************
+         * Server variables          *
+         * ***************************/
         int port;
         int serverSocket;
         socklen_t addressLength = sizeof(struct sockaddr_in);
@@ -30,29 +32,38 @@ class Server {
         StatusMessage status;
         std::vector<std::thread> threads;
 
+        /*****************************
+         * Methods                   *
+         * ***************************/
         void destroyThreads();
 
-        /* Server-Socket interaction */
+        /*****************************
+         * Server socket methods     *
+         * ***************************/
         ClientInfo* acceptClient();
         int addClient(ClientInfo* client);
-        void rcvMessages(int clientIndex);
+        bool clientConnected(int clientIndex);
         void closeClient(int clientIndex);
         void closeAllConnections();
-        int checkConnections();
-        bool continueListen();
-        bool clientConnected(int clientIndex);
 
-        /* Message processing */
+        /*****************************
+         * Message handling methods  *
+         * ***************************/
         void readMessage(int clientIndex);
         void processMessage(int clientIndex);
         void decodeMessage(int clientIndex);
+        void rcvMessages(int clientIndex);
 
-        /* Server-Proxy interaction */
+        /*****************************
+         * Server-Proxy interaction *
+         * ***************************/
         void logMessage(int clientIndex);
         void crashSequence();
         void sendChatLog(int index);
 
-        /* Server-Server interaction */
+        /*****************************
+         * Server-Server interaction *
+         * ***************************/
         void connectToLeftNeighbor();
         void antiEntropy();
         void checkStatus(int clientIndex);
