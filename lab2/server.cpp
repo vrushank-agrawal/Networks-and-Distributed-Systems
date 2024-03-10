@@ -207,10 +207,14 @@ void Server::rcvMessages(int clientIndex) {
 
     /* Rcv messages from client until disconnected */
     int n;
-    while ((n = recv(client->socket, client->message, 255, 0)) > 0) {
+    char buffer[256];
+    bzero(buffer, 256);
+    while ((n = recv(client->socket, buffer, 255, 0)) > 0) {
+        client->message = buffer;
         std::cout << "Message: " << client->message << std::endl;
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
+        bzero(buffer, 256);
     }
 
     /* The client has disconnected */
@@ -368,9 +372,7 @@ void Server::sendStatus(int index) {
 
     /* Create message for client */
     std::string statusMessage = "status " + std::to_string(maxSeqNo);
-    std::cout << "String message: " << statusMessage << std::endl;
     const char* message = statusMessage.c_str();
-    std::cout << "Char message: " << message << std::endl;
     int messageLength = strlen(message);
 
     int n = sendto(client->socket, message, messageLength, 0, (struct sockaddr*)&(client->address), this->addressLength);
