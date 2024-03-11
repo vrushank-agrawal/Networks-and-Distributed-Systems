@@ -282,7 +282,7 @@ void Server::sendChatLog(int cliendIndex) {
 
     /* Message sent */
     std::cout << "chatLog: " << chatLog << std::endl;
-    std::cout << "chatLog sent to proxy" << std::endl;
+    std::cout << "chatLog sent to proxy" << this->clients[cliendIndex]->port << std::endl;
 }
 
 
