@@ -5,21 +5,21 @@
 
 class RumorMessage {
     private:
-        char* message;
-        char* from;
+        std::string message;
+        std::string from;
         int seqNo;
         std::string chatText;
 
         void decomposeMessage();
 
     public:
-        RumorMessage(int seq, char* message);
+        RumorMessage(int seq, std::string message);
 
         /*****************************
          * Getters                   *
          * ***************************/
         std::string getMessage();
-        char* getFrom();
+        std::string getFrom();
         int getSeqNo();
         std::string getChatText();
 };

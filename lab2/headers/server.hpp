@@ -8,7 +8,7 @@ typedef struct ClientInfo {
     struct sockaddr_in address;     /**< Client address */
     int socket;                     /**< Client socket */
     int port;                       /**< Client port */
-    char* message;                  /**< Message from client */
+    std::string message;                  /**< Message from client */
     std::vector<std::string> messageParts;  /**< Message divided into 3 parts */
 } ClientInfo;
 

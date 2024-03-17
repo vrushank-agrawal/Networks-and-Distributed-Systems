@@ -28,6 +28,12 @@ void Server::start() {
         exit(1);
     }
 
+    int yes = 1;
+    if (setsockopt(this->serverSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+        std::cerr << "Error setting socket options" << std::endl;
+        exit(1);
+    }
+
     struct sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
@@ -161,13 +167,14 @@ void Server::closeAllConnections() {
 void Server::readMessage(int clientIndex) {
     char buffer[256];
     bzero(buffer, 256);
-    int n = read((*this->clients[clientIndex]).socket, buffer, 255);
+    int n = read(this->clients[clientIndex]->socket, buffer, 255);
     if (n < 0) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
     }
     std::cout << "Message: " << buffer << std::endl;
-    this->clients[clientIndex]->message = buffer;
+    this->clients[clientIndex]->message = std::string(buffer, n);
+    std::cout << "Thread " << std::this_thread::get_id() << " reading message from client " << clientIndex << ": " << this->clients[clientIndex]->message << std::endl;
 }
 
 /**
@@ -179,7 +186,6 @@ void Server::processMessage(int clientIndex) {
     std::stringstream ss(this->clients[clientIndex]->message);
     std::string part;
     while (ss >> part) {
-        // printf("Part: %s\n", part.c_str());
         this->clients[clientIndex]->messageParts.push_back(part);
     }
 }
@@ -237,7 +243,9 @@ void Server::logMessage(int clientIndex) {
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
 
     int seq = stoi(messageParts[1]);
-    char* message = (char*) messageParts[2].c_str();
+    std::string message = messageParts[2];
+
+    std::cout << "Adding message in logMessage(): " << message << std::endl;
 
     RumorMessage rumor(seq, message);
     {   /* Lock the logMutex when adding message to chat log */
@@ -267,22 +275,28 @@ void Server::sendChatLog(int cliendIndex) {
     shared_lock.unlock();
 
     std::string chatLog = "chatLog";
-    for (RumorMessage message : chatLogMsgs) {
-        chatLog += " " + message.getMessage() + ",";
+    for (size_t i = 0; i < chatLogMsgs.size(); i++) {
+        chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getMessage();
     }
+    chatLog += "\n";
+    std::cout << "I am sending this chatLog: " << chatLog;
 
     const char* msg = chatLog.c_str();
     int messageLength = strlen(msg);
 
-    int n = sendto(this->clients[cliendIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[cliendIndex]->address), this->addressLength);
-    if (n < 0) {
-        std::cerr << "Error: Could not send data to proxy! " << std::endl;
-        this->closeClient(cliendIndex);
+    constexpr int numClients = sizeof(this->clients) / sizeof(this->clients[0]);
+    if (cliendIndex < 0 || cliendIndex >= numClients) {
+        std::cerr << "Error: Invalid client index " << cliendIndex << std::endl;
+        return;
     }
 
-    /* Message sent */
-    std::cout << "chatLog: " << chatLog << std::endl;
-    std::cout << "chatLog sent to proxy" << this->clients[cliendIndex]->port << std::endl;
+    int n = sendto(this->clients[cliendIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[cliendIndex]->address), this->addressLength);
+
+    if (n < 0) {
+        std::cerr << "Error: Could not send data to proxy! " << std::endl;
+        std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
+        this->closeClient(cliendIndex);
+    }
 }
 
 
@@ -393,7 +407,7 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
     /* Lock the logMutex when reading the message */
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
     int maxSeqNo = this->status.getMaxSeqNo();
-    std::string m = this->status.getMessage(maxSeqNoRcvd+1).c_str();
+    std::string m = this->status.getMessage(maxSeqNoRcvd+1);
     shared_lock.unlock();
 
     /* Create message for client */

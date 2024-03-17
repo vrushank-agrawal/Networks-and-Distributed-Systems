@@ -9,7 +9,7 @@
  * @param seq Sequence number of the message
  * @param message Message received
 */
-RumorMessage::RumorMessage(int seq, char* message) {
+RumorMessage::RumorMessage(int seq, std::string message) {
     this->seqNo = seq;
     this->message = message;
     // this->decomposeMessage();
@@ -32,7 +32,7 @@ std::string RumorMessage::getChatText() {
 /**
  * @brief Get the sender of the message
 */
-char* RumorMessage::getFrom() {
+std::string RumorMessage::getFrom() {
     return this->from;
 }
 
