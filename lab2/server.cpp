@@ -240,8 +240,6 @@ void Server::rcvMessages(int clientIndex) {
 */
 void Server::logMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
-    for (auto& part : messageParts) std::cout << part << " ";
-    std::cout << this->clients[clientIndex]->message << std::endl;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
 
     int seq = stoi(messageParts[1]);
@@ -250,10 +248,9 @@ void Server::logMessage(int clientIndex) {
     std::cout << "Adding message in logMessage(): " << message << std::endl;
 
     RumorMessage rumor(seq, message);
-    {   /* Lock the logMutex when adding message to chat log */
-        std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
-        this->status.addMessageToLog(rumor, seq);
-    }
+    std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
+    this->status.addMessageToLog(rumor, seq);
+    unique_lock.unlock();
 }
 
 /**
@@ -347,7 +344,7 @@ void Server::connectToLeftNeighbor() {
 void Server::antiEntropy() {
     std::cout << "Starting anti-entropy..." << std::endl;
     while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
         int random = rand() % 2;
         if (this->clientConnected(random)) {
             this->sendStatus(random);
@@ -367,6 +364,8 @@ void Server::checkStatus(int clientIndex) {
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
     int ourMaxSeqNo = this->status.getMaxSeqNo();
     shared_lock.unlock();
+
+    std::cout << "Max sequence number: " << ourMaxSeqNo << std::endl;
 
     (maxSeqNoRcvd < ourMaxSeqNo) ? this->rumorMongering(maxSeqNoRcvd, clientIndex)
         : (maxSeqNoRcvd > ourMaxSeqNo) ? this->sendStatus(clientIndex)
@@ -413,7 +412,7 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
     shared_lock.unlock();
 
     /* Create message for client */
-    std::string message = "msg " + std::to_string(maxSeqNo) + " " + m;
+    std::string message = "msg " + std::to_string(maxSeqNoRcvd+1) + " " + m;
     std::cout << "Sending message to " << client->port << ": " << message << std::endl;
     const char* msg = message.c_str();
 
