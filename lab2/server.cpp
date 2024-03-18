@@ -240,6 +240,8 @@ void Server::rcvMessages(int clientIndex) {
 */
 void Server::logMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
+    for (auto& part : messageParts) std::cout << part << " ";
+    std::cout << this->clients[clientIndex]->message << std::endl;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
 
     int seq = stoi(messageParts[1]);
@@ -412,6 +414,7 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
 
     /* Create message for client */
     std::string message = "msg " + std::to_string(maxSeqNo) + " " + m;
+    std::cout << "Sending message to " << client->port << ": " << message << std::endl;
     const char* msg = message.c_str();
 
     int n = sendto(client->socket, msg, strlen(msg), 0, (struct sockaddr*)&(client->address), this->addressLength);

@@ -123,7 +123,7 @@ int StatusMessage::getMaxSeqNo() {
 std::string StatusMessage::getMessage(int seqNo) {
     for (RumorMessage message : this->chatLog) {
         if (message.getSeqNo() == seqNo) {
-            return message.getChatText();
+            return message.getMessage();
         }
     }
 
