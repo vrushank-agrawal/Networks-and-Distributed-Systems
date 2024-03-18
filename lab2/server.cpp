@@ -407,7 +407,6 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
 
     /* Lock the logMutex when reading the message */
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-    int maxSeqNo = this->status.getMaxSeqNo();
     std::string m = this->status.getMessage(maxSeqNoRcvd+1);
     shared_lock.unlock();
 

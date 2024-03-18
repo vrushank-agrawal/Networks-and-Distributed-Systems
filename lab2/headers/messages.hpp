@@ -3,6 +3,8 @@
 
 #include "libraries.hpp"
 
+#define MAX_MESSAGES 1024
+
 class RumorMessage {
     private:
         std::string message;
@@ -13,7 +15,9 @@ class RumorMessage {
         void decomposeMessage();
 
     public:
+        RumorMessage();
         RumorMessage(int seq, std::string message);
+        bool operator==(const RumorMessage& other) const;
 
         /*****************************
          * Getters                   *

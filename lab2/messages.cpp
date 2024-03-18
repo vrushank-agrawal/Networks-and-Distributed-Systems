@@ -4,6 +4,15 @@
  * RumorMessage class  *
  ***********************/
 
+RumorMessage::RumorMessage() {
+    this->seqNo = -1;
+    this->message = "";
+}
+
+bool RumorMessage::operator==(const RumorMessage& other) const {
+     return (seqNo == other.seqNo) && (message == other.message);
+}
+
 /**
  * @brief Construct a new Rumor Message:: Rumor Message object
  * @param seq Sequence number of the message
@@ -65,6 +74,9 @@ StatusMessage::StatusMessage(int port) {
     this->status[port+1] = 0;
     this->status[port-1] = 0;
     this->maxSeqNo = 0;
+    for (int i = 0; i < MAX_MESSAGES; i++) {
+        this->chatLog.push_back(RumorMessage());
+    }
 }
 
 /**
@@ -83,7 +95,7 @@ void StatusMessage::updateStatus(int port, int seqNo) {
 */
 void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
     std::cout << "Adding message " << seq << " to chat log" << std::endl;
-    this->chatLog.push_back(message);
+    this->chatLog[seq-1] = message;
     this->updateMaxSeqNo(seq);
 }
 
@@ -92,7 +104,15 @@ void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
  * @param seqNo Sequence number to be updated
 */
 void StatusMessage::updateMaxSeqNo(int seqNo) {
-    this->maxSeqNo = seqNo;
+    int newSeqNo = this->maxSeqNo;
+    for (int i = newSeqNo; i < MAX_MESSAGES; i++) {
+        if (this->chatLog[i] == RumorMessage()) {
+            break;
+        }
+        newSeqNo = i+1;
+    }
+    std::cout << "Updating maxSeqNo to " << newSeqNo << std::endl;
+    this->maxSeqNo = newSeqNo;
 }
 
 /**
@@ -103,10 +123,10 @@ std::map<int, int> StatusMessage::getStatus() {
 }
 
 /**
- * @brief Get the chat log of the server
+ * @brief Get the chat log of the server until maxSeqNo elements
 */
 std::vector<RumorMessage> StatusMessage::getChatLog() {
-    return this->chatLog;
+    return std::vector<RumorMessage>(this->chatLog.begin(), this->chatLog.begin() + this->maxSeqNo);
 }
 
 /**
