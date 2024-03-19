@@ -8,24 +8,23 @@
 class RumorMessage {
     private:
         std::string message;
-        std::string from;
-        int seqNo;
         std::string chatText;
+        int from;
+        int seqNo;
 
         void decomposeMessage();
 
     public:
         RumorMessage();
-        RumorMessage(int seq, std::string message);
-        bool operator==(const RumorMessage& other) const;
+        RumorMessage(std::string message);
 
         /*****************************
          * Getters                   *
          * ***************************/
         std::string getMessage();
-        std::string getFrom();
-        int getSeqNo();
         std::string getChatText();
+        int getFrom();
+        int getSeqNo();
 };
 
 class StatusMessage {
@@ -50,8 +49,8 @@ class StatusMessage {
          * ***************************/
         std::map<int, int> getStatus();
         std::vector<RumorMessage> getChatLog();
+        std::string getMessage(int from, int seqNo);
         int getMaxSeqNo();
-        std::string getMessage(int seqNo);
 };
 
 #endif

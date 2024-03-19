@@ -57,7 +57,7 @@ class Server {
         /*****************************
          * Server-Proxy interaction *
          * ***************************/
-        void logMessage(int clientIndex);
+        void logProxyMessage(int clientIndex);
         void crashSequence();
         void sendChatLog(int index);
 
@@ -66,9 +66,10 @@ class Server {
          * ***************************/
         void connectToLeftNeighbor();
         void antiEntropy();
+        void logRumorMessage(int clientIndex);
         void checkStatus(int clientIndex);
         void sendStatus(int clientIndex);
-        void rumorMongering(int maxSeqNoRcvd, int clientIndex);
+        void rumorMongering(int from, int maxSeqNoRcvd, int clientIndex);
 };
 
 #endif
