@@ -62,7 +62,7 @@ void Server::listenClient() {
     std::cout << "Listening for clients..." << std::endl;
     while (true) {
         /* Listen for only right neighbor and proxy */
-        if (listen(this->serverSocket, 2) < 0) {
+        if (listen(this->serverSocket, 3) < 0) {
             std::cerr << "Error: Could not listen" << std::endl;
             exit(1);
         }
@@ -119,6 +119,7 @@ ClientInfo* Server::acceptClient() {
  * @param client The client to add
 */
 int Server::addClient(ClientInfo* client) {
+    std::cout << "Received initial conn req from " << client->port << std::endl;
     if (client->port == this->port+1) { /* Right neighbor */
         this->clients[1] = client;
         std::cout << "Connected to right neighbor " << this->port+1 << std::endl;
@@ -156,9 +157,7 @@ void Server::closeClient(int clientIndex) {
 void Server::closeAllConnections() {
     for (auto& client : this->clients) {
         if (client != nullptr && client->socket > 0) {
-            
             close(client->socket);
-            std::cout << "closing client: " << client << std::endl;
         }
     }
     if (this->serverSocket > 0) {
@@ -208,7 +207,8 @@ void Server::processMessage(int clientIndex) {
 */
 void Server::decodeMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
-    (messageParts[0] == "msg") ? this->logMessage(clientIndex)
+    (messageParts[0] == "msg") ? this->logProxyMessage(clientIndex)
+        : (messageParts[0] == "rumor") ? this->logRumorMessage(clientIndex)
         : (messageParts[0] == "get" && messageParts[1] == "chatLog") ? this->sendChatLog(clientIndex)
         : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
         : (messageParts[0] == "crash") ? this->crashSequence()
@@ -247,21 +247,22 @@ void Server::rcvMessages(int clientIndex) {
  * *****************************************************************************/
 
 /**
- * @brief Add the received message to the chat log
+ * @brief Add the received message from the proxy to the chat log
  * @param clientIndex The index of the client in the clients array
 */
-void Server::logMessage(int clientIndex) {
+void Server::logProxyMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
 
-    int seq = stoi(messageParts[1]);
+    std::string seq = messageParts[1];
     std::string message = messageParts[2];
+    message = "from:" + std::to_string(this->port) + "," + "chatText:" + message + "," + "seqNo:" + seq;
 
-    std::cout << "Adding message in logMessage(): " << message << std::endl;
+    std::cout << "Adding message in logProxyMessage(): " << message << std::endl;
 
-    RumorMessage rumor(seq, message);
+    RumorMessage rumor(message);
     std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
-    this->status.addMessageToLog(rumor, seq);
+    this->status.addMessageToLog(rumor, std::stoi(seq));
     unique_lock.unlock();
 }
 
@@ -287,7 +288,7 @@ void Server::sendChatLog(int cliendIndex) {
 
     std::string chatLog = "chatLog";
     for (size_t i = 0; i < chatLogMsgs.size(); i++) {
-        chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getMessage();
+        chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getChatText();
     }
     chatLog += "\n";
     std::cout << "I am sending this chatLog: " << chatLog;
@@ -356,17 +357,41 @@ void Server::connectToLeftNeighbor() {
 void Server::antiEntropy() {
     std::cout << "Starting anti-entropy..." << std::endl;
     while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
         int random = rand() % 2;
+        std::cout << "Random: " << random << std::endl;
         if (this->clientConnected(random)) {
             this->sendStatus(random);
         }
     }
 }
 
+
+/**
+ * @brief Add the received rumor message from a neighbor to the chat log
+ * @param clientIndex The index of the client in the clients array
+*/
+void Server::logRumorMessage(int clientIndex) {
+    std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
+    for (auto& part : messageParts) {
+        std::cout << "Part: " << part << std::endl;
+    }
+    assert(messageParts.size() == 2 && "Error: rumor should have 2 parts");
+
+    std::string message = messageParts[1];
+
+    std::cout << "Adding message in logRumorMessage(): " << message << std::endl;
+
+    RumorMessage rumor(message);
+    std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
+    this->status.addMessageToLog(rumor, rumor.getSeqNo());
+    unique_lock.unlock();
+}
+
+
 /**
  * Helper method to parse incoming status message
- * 
+ *
  * @param message Status msg payload in the form <port>:<seqNo>,<port>:<seqNo>,...
  * @return std::map status of the sender
  */
@@ -388,33 +413,13 @@ std::map<int, int> parseStatusMessage(const std::string& message) {
     return statusMap;
 }
 
-// /**
-//  * @brief Check the status of the client if it is behind or ahead of the server
-//  *      and rumor monger if behind or send status if ahead
-//  * @param clientIndex The index of the client in the clients array
-// */
-// void Server::checkStatus(int clientIndex) {
-//     int maxSeqNoRcvd = stoi(this->clients[clientIndex]->messageParts[1]);
-
-//     /* Lock the logMutex when reading the max sequence number */
-//     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-//     int ourMaxSeqNo = this->status.getMaxSeqNo();
-//     shared_lock.unlock();
-
-//     std::cout << "Max sequence number: " << ourMaxSeqNo << std::endl;
-
-//     (maxSeqNoRcvd < ourMaxSeqNo) ? this->rumorMongering(maxSeqNoRcvd, clientIndex)
-//         : (maxSeqNoRcvd > ourMaxSeqNo) ? this->sendStatus(clientIndex)
-//         : void(); /* Stop rumor mongering */
-// }
-
 /**
  * Evaluates the status of a client relative to the server's message log to determine if the client
  * is behind or ahead. Depending on the client's status, the server may initiate rumor mongering to
  * update the client with newer messages, or respond with its own status to reconcile differences.
  * The method parses the client's status message, compares it with the server's status, and identifies
  * messages the client lacks. These messages are then sent to the client to ensure synchronization.
- * 
+ *
  * @param clientIndex The index of the client in the server's client array, used to reference the client's
  *                    status message and to send necessary updates.
  */
@@ -430,8 +435,7 @@ void Server::checkStatus(int clientIndex) {
         auto it = receivedStatus.find(port);
         if (it == receivedStatus.end() || it->second < ourSeqNo) {
             for (int seqNo = (it == receivedStatus.end() ? 1 : it->second + 1); seqNo <= ourSeqNo; ++seqNo) {
-                //TODO: uncomment when implemented
-                //this->rumorMongering(port, seqNo, clientIndex);
+                this->rumorMongering(port, seqNo, clientIndex);
             }
         }
     }
@@ -478,16 +482,18 @@ void Server::sendStatus(int index) {
  * @param maxSeqNoRcvd The maximum sequence number with the client
  * @param clientIndex The index of the client in the clients array
 */
-void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
+void Server::rumorMongering(int from, int seqNo, int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
+
+    std::cout << "from: " << from << " seqNo: " << seqNo << std::endl;
 
     /* Lock the logMutex when reading the message */
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-    std::string m = this->status.getMessage(maxSeqNoRcvd+1);
+    std::string m = this->status.getMessage(from, seqNo);
     shared_lock.unlock();
 
     /* Create message for client */
-    std::string message = "msg " + std::to_string(maxSeqNoRcvd+1) + " " + m;
+    std::string message = "rumor " + m;
     std::cout << "Sending message to " << client->port << ": " << message << std::endl;
     const char* msg = message.c_str();
 
@@ -499,5 +505,5 @@ void Server::rumorMongering(int maxSeqNoRcvd, int clientIndex) {
     }
 
     /* Message sent */
-    std::cout << "Rumor mongering msg " << maxSeqNoRcvd+1 << std::endl;
+    std::cout << "Rumor mongering msg " << seqNo+1 << std::endl;
 }
