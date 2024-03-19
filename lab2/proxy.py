@@ -54,8 +54,6 @@ class ClientHandler(Thread):
                 except:
                     #print sys.exc_info()
                     self.valid = False
-                    if debug:
-                        print(f'[DEBUG] Closing {self.index}')
                     del threads[self.index]
                     self.sock.close()
                     break
@@ -78,9 +76,6 @@ def send(index, data, set_wait=False):
     pid = int(index)
     if set_wait:
         wait_chat_log = True
-    if debug:
-        print(f'[DEBUG] pid: {pid}')
-        print(f'[DEBUG] Threads: {threads}')
     threads[pid].send(data)
 
 def exit(exit=False):
@@ -94,18 +89,16 @@ def exit(exit=False):
 
     time.sleep(2)
     for k in threads:
-        print(f'[DEBUG] Closing {k}')
         threads[k].close()
 
-    print('[DEBUG] line 100')
-    subprocess.Popen(['./stopall'], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
+    subprocess.Popen(['./stopall'], stdout=open('/dev/null'), stderr=open('/dev/null'))
     sys.stdout.flush()
     time.sleep(0.1)
     sys.exit(0)
 
 def timeout():
     time.sleep(6000)
-    print('[DEBUG] line 106')
+    print('Timeout. Exiting.')
     exit(True)
 
 def main():
@@ -119,20 +112,15 @@ def main():
         try:
             line = sys.stdin.readline()
         except: # keyboard exception, such as Ctrl+C/D
-            print('[DEBUG] line 119')
             exit(True)
         if line == '': # end of a file
             print('[DEBUG] line 122')
             exit()
         line = line.strip() # remove trailing '\n'
         if line == 'exit': # exit when reading 'exit' command
-            print('[DEBUG] line 126')
             exit()
         sp1 = line.split(None, 1)
         sp2 = line.split()
-        if debug:
-            print(f'[DEBUG] sp1: {sp1}')
-            print(f'[DEBUG] sp2: {sp2}')
         if len(sp1) != 2: # validate input
             continue
         pid = int(sp2[0]) # first field is pid
@@ -161,10 +149,6 @@ def main():
         else:
             if cmd == 'msg': # message msgid msg
                 msgs[int(sp2[2])] = sp1[1]
-                if debug:
-                    print(f'[DEBUG] sp2[2]: {sp2[2]}')
-                    print(f'[DEBUG] sp1[1]: {sp1[1]}')
-                    print(f'[DEBUG] msgs: {msgs}')
                 send(pid, sp1[1])
             elif cmd[:5] == 'crash': # crashXXX
                 send(pid, sp1[1])
