@@ -96,13 +96,15 @@ def exit(exit=False):
     for k in threads:
         print(f'[DEBUG] Closing {k}')
         threads[k].close()
+    
+    print('[DEBUG] line 100')
     subprocess.Popen(['./stopall'], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
     sys.stdout.flush()
     time.sleep(0.1)
     sys.exit(0)
 
 def timeout():
-    time.sleep(600)
+    time.sleep(6000)
     print('[DEBUG] line 106')
     exit(True)
 
@@ -146,10 +148,10 @@ def main():
                 time.sleep(2)
             # start the process
             if debug:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
+                subprocess.Popen(['./main', sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
                 # subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], shell=True, stdout=sys.stdout, stderr=sys.stderr)
             else:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
+                subprocess.Popen(['./main', sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
             # sleep for a while to allow the process be ready
             time.sleep(1)
             # connect to the port of the pid

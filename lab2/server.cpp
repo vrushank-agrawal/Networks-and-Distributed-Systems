@@ -72,7 +72,7 @@ void Server::listenClient() {
         int clientIndex = this->addClient(client);
         if (clientIndex == -1) continue;
         this->readMessage(clientIndex);
-        std::cout << "reached here" << std::endl;
+        std::cout << "accepted, added, read 1st msg from " << this->clients[clientIndex]->port << std::endl;
 
         // proxy
         if (this->clients[clientIndex]->port != this->port+1) {
@@ -154,7 +154,6 @@ int Server::addClient(ClientInfo* client) {
  * @brief Check if a certain client is connected
 */
 bool Server::clientConnected(int clientIndex) {
-    // std::cout << "Checking if client " << this->clients[clientIndex]->port << " is connected" << std::endl;
     return this->clients[clientIndex] != nullptr;
 }
 
@@ -164,7 +163,6 @@ bool Server::clientConnected(int clientIndex) {
 void Server::closeClient(int clientIndex) {
     std::cout << "Closing client connection " << this->clients[clientIndex]->port << std::endl;
     close(this->clients[clientIndex]->socket);
-    //delete this->clients[clientIndex];
     this->clients[clientIndex] = nullptr;
 }
 
@@ -255,7 +253,7 @@ void Server::rcvMessages(int clientIndex) {
     bzero(buffer, 256);
     while ((n = recv(client->socket, buffer, 255, 0)) > 0) {
         client->message = buffer;
-        std::cout << "Message: " << client->message << std::endl;
+        std::cout << "msg rcvd: " << client->message << std::endl;
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
         bzero(buffer, 256);
@@ -263,12 +261,11 @@ void Server::rcvMessages(int clientIndex) {
 
     /* The client has disconnected */
     if (n == 0) {
-        std::cout << "Gracefully dumped bro :). port=" << this->clients[clientIndex]->port << " has disconnected!! Closing connection" << std::endl;
+        std::cout << "Gracefully dumped :). port=" << this->clients[clientIndex]->port << std::endl;
         this->closeClient(clientIndex);
     }
     if (n < 0) {
-        std::cout << "n < 0 in recv. Client with port= " <<  this->clients[clientIndex]->port << " exited abruptly" << std::endl;
-        //std::cout << "port=" << this->clients[clientIndex]->port << " has disconnected!! Closing connection" << std::endl;
+        std::cout << "Badly dumped :(. port= " <<  this->clients[clientIndex]->port << std::endl;
         this->closeClient(clientIndex);
     }
 }
@@ -378,7 +375,6 @@ void Server::connectToLeftNeighbor() {
                 std::string whoami = "whoami " + std::to_string(this->port);
                 const char* msg = whoami.c_str();
                 int messageLength = strlen(msg);
-                std::cout << "reached here" << std::endl;
                 int n = sendto(left->socket, msg, messageLength, 0, (struct sockaddr*)&(left->address), this->addressLength);
                 std::cout << "Sending whoami message to " << left->port << std::endl;
                 

@@ -104,22 +104,24 @@ void StatusMessage::updateStatus(int port, int seqNo) {
 */
 void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
     std::cout << "Adding message " << seq << " to chat log" << std::endl;
-    std::cout << "Current status map:" << std::endl;
-    for (const auto& pair : this->statusMap) {
-        std::cout << "Key: " << pair.first << ", Value: " << pair.second << std::endl;
-    }
-    this->chatLog.push_back(message);
+    // std::cout << "Current status map:" << std::endl;
+    // for (const auto& pair : this->statusMap) {
+    //     std::cout << "Key: " << pair.first << ", Value: " << pair.second << std::endl;
+    // }
     if (this->statusMap.find(message.getFrom()) == this->statusMap.end()) {
         if (seq == 1) {
-            this->statusMap[message.getFrom()] = 1;
+            this->statusMap[message.getFrom()] = 1;     
         } else {
             std::cout << "THIS IS BAD. Trying to write to new origin:" << message.getFrom() << " seq:" << seq << std::endl;
+            return;
         }
     } else if (seq == this->statusMap.find(message.getFrom())->second + 1) {
             this->statusMap[message.getFrom()] = seq;
     } else {
         std::cout << "THIS IS BAD. Message received out of order!!! " << "current maxseq: " << this->statusMap.find(message.getFrom())->second << " and recvd seq:" << seq << std::endl;
+        return;
     }
+    this->chatLog.push_back(message);
 }
 
 /**
