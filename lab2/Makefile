@@ -6,14 +6,14 @@ LDFLAGS         = -Wall -std=c++20
 
 CPPFILES        = $(wildcard *.cpp)
 MAINOBJS        = $(CPPFILES:.cpp=.o)
-ALLEXEC         = clean main
+ALLEXEC         = clean process
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 all: $(ALLEXEC)
 
-main: $(MAINOBJS)
+process: $(MAINOBJS)
 	$(LD) $(LDFLAGS) -o $@ $(MAINOBJS)
 
 clean:

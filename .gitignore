@@ -4,3 +4,4 @@
 *.tar.gz
 *.tar.bz2
 *.time.txt
+.vscode/

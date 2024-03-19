@@ -1,12 +1,12 @@
 #include "headers.hpp"
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Usage:\n./process <pid> <nodes> <port>" << std::endl;
         return 1;
     }
 
-    int port = atoi(argv[1]);
+    int port = atoi(argv[3]);
 
     Server server(port);
     server.start();
