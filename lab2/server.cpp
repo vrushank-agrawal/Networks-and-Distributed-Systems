@@ -71,8 +71,21 @@ void Server::listenClient() {
         ClientInfo* client = this->acceptClient();
         int clientIndex = this->addClient(client);
         this->readMessage(clientIndex);
-        this->processMessage(clientIndex);
-        this->decodeMessage(clientIndex);
+        std::cout << "reached here" << std::endl;
+
+        // proxy
+        if (this->clients[clientIndex]->port != this->port+1) {
+            this->processMessage(clientIndex);
+            this->decodeMessage(clientIndex);
+        }
+        // right neighbor
+        else {
+            std::cout << "Swapping clients[1] and clients[2]" << std::endl;
+            ClientInfo* temp = this->clients[1];
+            this->clients[1] = this->clients[2];
+            this->clients[2] = temp;
+            clientIndex = 1;
+        }
 
         /* Start thread to rcv messages from client and detach it */
         std::thread thread = std::thread(&Server::rcvMessages, this, clientIndex);
@@ -120,17 +133,15 @@ ClientInfo* Server::acceptClient() {
 */
 int Server::addClient(ClientInfo* client) {
     std::cout << "Received initial conn req from " << client->port << std::endl;
-    if (client->port == this->port+1) { /* Right neighbor */
-        this->clients[1] = client;
-        std::cout << "Connected to right neighbor " << this->port+1 << std::endl;
-        return 1;
-    } else if (client->port == this->port-1) { /* Left neighbor */
-        std::cerr << "Error: Left neighbor cannot send connect request" << std::endl;
-        exit(1);
-    } else { /* Proxy */
+    
+    if (this->clients[2] == nullptr) {
         this->clients[2] = client;
-        std::cout << "Connected to proxy " << client->port << std::endl;
+        std::cout << "First conn req, setting it as \"Proxy\"" << std::endl;
         return 2;
+    } else {
+        std::cout << "Second conn req, setting it as \"Right\"" << std::endl;
+        this->clients[1] = client;
+        return 1;
     }
 }
 
@@ -138,6 +149,7 @@ int Server::addClient(ClientInfo* client) {
  * @brief Check if a certain client is connected
 */
 bool Server::clientConnected(int clientIndex) {
+    // std::cout << "Checking if client " << this->clients[clientIndex]->port << " is connected" << std::endl;
     return this->clients[clientIndex] != nullptr;
 }
 
@@ -178,6 +190,7 @@ void Server::closeAllConnections() {
 void Server::readMessage(int clientIndex) {
     char buffer[256];
     bzero(buffer, 256);
+    std::cout << "clientIndex: " << clientIndex << std::endl;
     int n = read(this->clients[clientIndex]->socket, buffer, 255);
     if (n < 0) {
         std::cerr << "Error: Could not read from socket" << std::endl;
@@ -185,6 +198,16 @@ void Server::readMessage(int clientIndex) {
     }
     std::cout << "Message: " << buffer << std::endl;
     this->clients[clientIndex]->message = std::string(buffer, n);
+
+    // check for whoami message it must startwith "whoami "
+    if (this->clients[clientIndex]->message.substr(0, 7) == "whoami ") {
+        std::cout << "raw string of whoami: " << this->clients[clientIndex]->message.substr(7, 12) << std::endl;
+        int whoami_port = std::stoi(this->clients[clientIndex]->message.substr(7, 12));
+        std::cout << "Received whoami message from " <<  whoami_port << std::endl;
+        this->clients[clientIndex]->port = whoami_port;
+        this->clients[clientIndex]->address.sin_port = ntohs(whoami_port);
+    }
+
     std::cout << "Thread " << std::this_thread::get_id() << " reading message from client " << clientIndex << ": " << this->clients[clientIndex]->message << std::endl;
 }
 
@@ -341,6 +364,19 @@ void Server::connectToLeftNeighbor() {
             } else {
                 left->port = (this->port)-1;
                 std::cout << "Connected to left neighbor " << (this->port)-1 << std::endl;
+
+                // send a message "whoami <my_port>"
+                std::string whoami = "whoami " + std::to_string(this->port);
+                const char* msg = whoami.c_str();
+                int messageLength = strlen(msg);
+                std::cout << "reached here" << std::endl;
+                int n = sendto(left->socket, msg, messageLength, 0, (struct sockaddr*)&(left->address), this->addressLength);
+                std::cout << "Sending whoami message to " << left->port << std::endl;
+                
+                if (n < 0) {
+                    std::cerr << "Error: Could not send data to " << left->port << std::endl;
+                    this->closeClient(0);
+                }
                 break;
             }
         }
@@ -357,7 +393,7 @@ void Server::connectToLeftNeighbor() {
 void Server::antiEntropy() {
     std::cout << "Starting anti-entropy..." << std::endl;
     while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
         int random = rand() % 2;
         std::cout << "Random: " << random << std::endl;
         if (this->clientConnected(random)) {
