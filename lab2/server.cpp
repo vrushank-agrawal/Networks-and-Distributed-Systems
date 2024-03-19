@@ -194,6 +194,10 @@ void Server::readMessage(int clientIndex) {
     char buffer[256];
     bzero(buffer, 256);
     int n = read(this->clients[clientIndex]->socket, buffer, 255);
+    if (n == 0 && clientIndex == 2) {
+        std::cout << "Proxy disconnected so I'm exiting too!" << std::endl;
+        exit(0);
+    }
     if (n < 0) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
@@ -262,6 +266,10 @@ void Server::rcvMessages(int clientIndex) {
     /* The client has disconnected */
     if (n == 0) {
         std::cout << "Gracefully dumped :). port=" << this->clients[clientIndex]->port << std::endl;
+        if (clientIndex == 2) {
+            std::cout << "Proxy disconnected so I'm exiting too!" << std::endl;
+            exit(0);
+        }
         this->closeClient(clientIndex);
     }
     if (n < 0) {
