@@ -102,7 +102,8 @@ def exit(exit=False):
     sys.exit(0)
 
 def timeout():
-    time.sleep(120)
+    time.sleep(600)
+    print('[DEBUG] line 106')
     exit(True)
 
 def main():
@@ -116,11 +117,14 @@ def main():
         try:
             line = sys.stdin.readline()
         except: # keyboard exception, such as Ctrl+C/D
+            print('[DEBUG] line 119')
             exit(True)
         if line == '': # end of a file
+            print('[DEBUG] line 122')
             exit()
         line = line.strip() # remove trailing '\n'
         if line == 'exit': # exit when reading 'exit' command
+            print('[DEBUG] line 126')
             exit()
         sp1 = line.split(None, 1)
         sp2 = line.split()

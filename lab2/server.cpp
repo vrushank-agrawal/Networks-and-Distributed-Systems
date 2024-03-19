@@ -70,6 +70,7 @@ void Server::listenClient() {
         /* Accept and add a new client */
         ClientInfo* client = this->acceptClient();
         int clientIndex = this->addClient(client);
+        if (clientIndex == -1) continue;
         this->readMessage(clientIndex);
         std::cout << "reached here" << std::endl;
 
@@ -79,7 +80,7 @@ void Server::listenClient() {
             this->decodeMessage(clientIndex);
         }
         // right neighbor
-        else {
+        else if (this->clients[2]->port == this->port+1) {
             std::cout << "Swapping clients[1] and clients[2]" << std::endl;
             ClientInfo* temp = this->clients[1];
             this->clients[1] = this->clients[2];
@@ -123,6 +124,7 @@ ClientInfo* Server::acceptClient() {
         std::cerr << "Error: Could not accept client" << std::endl;
         exit(1);
     }
+    std::cout << "Accepted new client at socket=" << client->socket << std::endl;
     client->port = ntohs(client->address.sin_port);
     return client;
 }
@@ -138,10 +140,13 @@ int Server::addClient(ClientInfo* client) {
         this->clients[2] = client;
         std::cout << "First conn req, setting it as \"Proxy\"" << std::endl;
         return 2;
-    } else {
+    } else if (this->clients[1] == nullptr) {
         std::cout << "Second conn req, setting it as \"Right\"" << std::endl;
         this->clients[1] = client;
         return 1;
+    } else {
+        std::cout << "Rejecting connection!!" << std::endl;
+        return -1;
     }
 }
 
@@ -159,7 +164,7 @@ bool Server::clientConnected(int clientIndex) {
 void Server::closeClient(int clientIndex) {
     std::cout << "Closing client connection " << this->clients[clientIndex]->port << std::endl;
     close(this->clients[clientIndex]->socket);
-    delete this->clients[clientIndex];
+    //delete this->clients[clientIndex];
     this->clients[clientIndex] = nullptr;
 }
 
@@ -190,20 +195,18 @@ void Server::closeAllConnections() {
 void Server::readMessage(int clientIndex) {
     char buffer[256];
     bzero(buffer, 256);
-    std::cout << "clientIndex: " << clientIndex << std::endl;
     int n = read(this->clients[clientIndex]->socket, buffer, 255);
     if (n < 0) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
     }
-    std::cout << "Message: " << buffer << std::endl;
+    std::cout << "from port=" << this->clients[clientIndex]->port << ", msg rcvd=" << buffer << std::endl;
     this->clients[clientIndex]->message = std::string(buffer, n);
 
     // check for whoami message it must startwith "whoami "
     if (this->clients[clientIndex]->message.substr(0, 7) == "whoami ") {
-        std::cout << "raw string of whoami: " << this->clients[clientIndex]->message.substr(7, 12) << std::endl;
         int whoami_port = std::stoi(this->clients[clientIndex]->message.substr(7, 12));
-        std::cout << "Received whoami message from " <<  whoami_port << std::endl;
+        std::cout << "Received whoami message from port=" <<  whoami_port << std::endl;
         this->clients[clientIndex]->port = whoami_port;
         this->clients[clientIndex]->address.sin_port = ntohs(whoami_port);
     }
@@ -259,7 +262,13 @@ void Server::rcvMessages(int clientIndex) {
     }
 
     /* The client has disconnected */
+    if (n == 0) {
+        std::cout << "Gracefully dumped bro :). port=" << this->clients[clientIndex]->port << " has disconnected!! Closing connection" << std::endl;
+        this->closeClient(clientIndex);
+    }
     if (n < 0) {
+        std::cout << "n < 0 in recv. Client with port= " <<  this->clients[clientIndex]->port << " exited abruptly" << std::endl;
+        //std::cout << "port=" << this->clients[clientIndex]->port << " has disconnected!! Closing connection" << std::endl;
         this->closeClient(clientIndex);
     }
 }
@@ -393,9 +402,8 @@ void Server::connectToLeftNeighbor() {
 void Server::antiEntropy() {
     std::cout << "Starting anti-entropy..." << std::endl;
     while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
         int random = rand() % 2;
-        std::cout << "Random: " << random << std::endl;
         if (this->clientConnected(random)) {
             this->sendStatus(random);
         }
@@ -409,9 +417,6 @@ void Server::antiEntropy() {
 */
 void Server::logRumorMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
-    for (auto& part : messageParts) {
-        std::cout << "Part: " << part << std::endl;
-    }
     assert(messageParts.size() == 2 && "Error: rumor should have 2 parts");
 
     std::string message = messageParts[1];
@@ -472,6 +477,7 @@ void Server::checkStatus(int clientIndex) {
         if (it == receivedStatus.end() || it->second < ourSeqNo) {
             for (int seqNo = (it == receivedStatus.end() ? 1 : it->second + 1); seqNo <= ourSeqNo; ++seqNo) {
                 this->rumorMongering(port, seqNo, clientIndex);
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
         }
     }
@@ -500,7 +506,7 @@ void Server::sendStatus(int index) {
             statusMessage += ",";
         }
     }
-    std::cout << "status_message that i'm sending is: " << statusMessage << std::endl;
+    std::cout << "sending status: " << statusMessage << std::endl;
 
 
     const char* message = statusMessage.c_str();

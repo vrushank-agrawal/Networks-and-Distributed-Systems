@@ -85,7 +85,6 @@ StatusMessage::StatusMessage() {}
 */
 StatusMessage::StatusMessage(int port) {
     this->statusMap[port] = 0;
-    this->maxSeqNo = 0;
     this->chatLog = std::vector<RumorMessage>();
 }
 
@@ -105,16 +104,22 @@ void StatusMessage::updateStatus(int port, int seqNo) {
 */
 void StatusMessage::addMessageToLog(RumorMessage message, int seq) {
     std::cout << "Adding message " << seq << " to chat log" << std::endl;
+    std::cout << "Current status map:" << std::endl;
+    for (const auto& pair : this->statusMap) {
+        std::cout << "Key: " << pair.first << ", Value: " << pair.second << std::endl;
+    }
     this->chatLog.push_back(message);
-    this->updateMaxSeqNo(seq);
-}
-
-/**
- * @brief Update the maximum sequence number of the chat log
- * @param seqNo Sequence number to be updated
-*/
-void StatusMessage::updateMaxSeqNo(int seqNo) {
-    this->maxSeqNo = seqNo;
+    if (this->statusMap.find(message.getFrom()) == this->statusMap.end()) {
+        if (seq == 1) {
+            this->statusMap[message.getFrom()] = 1;
+        } else {
+            std::cout << "THIS IS BAD. Trying to write to new origin:" << message.getFrom() << " seq:" << seq << std::endl;
+        }
+    } else if (seq == this->statusMap.find(message.getFrom())->second + 1) {
+            this->statusMap[message.getFrom()] = seq;
+    } else {
+        std::cout << "THIS IS BAD. Message received out of order!!! " << "current maxseq: " << this->statusMap.find(message.getFrom())->second << " and recvd seq:" << seq << std::endl;
+    }
 }
 
 /**
@@ -141,15 +146,5 @@ std::string StatusMessage::getMessage(int from, int seqNo) {
             return message.getMessage();
         }
     }
-
-    /* Message not found */
-    std::cerr << "Error: Message "<< seqNo << " not found in chatLog with maxSeqNo " << this->maxSeqNo << std::endl;
     return "";
-}
-
-/**
- * @brief Get the maximum sequence number of the chat log
-*/
-int StatusMessage::getMaxSeqNo() {
-    return this->maxSeqNo;
 }

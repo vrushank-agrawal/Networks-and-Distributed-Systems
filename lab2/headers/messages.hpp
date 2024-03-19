@@ -31,7 +31,6 @@ class StatusMessage {
     private:
         std::map<int, int> statusMap;
         std::vector<RumorMessage> chatLog;
-        int maxSeqNo;
 
     public:
         StatusMessage();
