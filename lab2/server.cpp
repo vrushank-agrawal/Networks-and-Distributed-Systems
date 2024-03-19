@@ -365,24 +365,78 @@ void Server::antiEntropy() {
 }
 
 /**
- * @brief Check the status of the client if it is behind or ahead of the server
- *      and rumor monger if behind or send status if ahead
- * @param clientIndex The index of the client in the clients array
-*/
-void Server::checkStatus(int clientIndex) {
-    int maxSeqNoRcvd = stoi(this->clients[clientIndex]->messageParts[1]);
+ * Helper method to parse incoming status message
+ * 
+ * @param message Status msg payload in the form <port>:<seqNo>,<port>:<seqNo>,...
+ * @return std::map status of the sender
+ */
+std::map<int, int> parseStatusMessage(const std::string& message) {
+    std::map<int, int> statusMap;
+    std::stringstream ss(message);
+    std::string item;
 
-    /* Lock the logMutex when reading the max sequence number */
+    while (getline(ss, item, ',')) {
+        std::stringstream itemStream(item);
+        std::string keyStr, valueStr;
+
+        if (getline(itemStream, keyStr, ':') && getline(itemStream, valueStr)) {
+            int port = std::stoi(keyStr);
+            int maxSeqNum = std::stoi(valueStr);
+            statusMap[port] = maxSeqNum;
+        }
+    }
+    return statusMap;
+}
+
+// /**
+//  * @brief Check the status of the client if it is behind or ahead of the server
+//  *      and rumor monger if behind or send status if ahead
+//  * @param clientIndex The index of the client in the clients array
+// */
+// void Server::checkStatus(int clientIndex) {
+//     int maxSeqNoRcvd = stoi(this->clients[clientIndex]->messageParts[1]);
+
+//     /* Lock the logMutex when reading the max sequence number */
+//     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+//     int ourMaxSeqNo = this->status.getMaxSeqNo();
+//     shared_lock.unlock();
+
+//     std::cout << "Max sequence number: " << ourMaxSeqNo << std::endl;
+
+//     (maxSeqNoRcvd < ourMaxSeqNo) ? this->rumorMongering(maxSeqNoRcvd, clientIndex)
+//         : (maxSeqNoRcvd > ourMaxSeqNo) ? this->sendStatus(clientIndex)
+//         : void(); /* Stop rumor mongering */
+// }
+
+/**
+ * Evaluates the status of a client relative to the server's message log to determine if the client
+ * is behind or ahead. Depending on the client's status, the server may initiate rumor mongering to
+ * update the client with newer messages, or respond with its own status to reconcile differences.
+ * The method parses the client's status message, compares it with the server's status, and identifies
+ * messages the client lacks. These messages are then sent to the client to ensure synchronization.
+ * 
+ * @param clientIndex The index of the client in the server's client array, used to reference the client's
+ *                    status message and to send necessary updates.
+ */
+void Server::checkStatus(int clientIndex) {
+    std::string receivedStatusMsg = this->clients[clientIndex]->messageParts[1];
+    std::map<int, int> receivedStatus = parseStatusMessage(receivedStatusMsg);
+
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-    int ourMaxSeqNo = this->status.getMaxSeqNo();
+    std::map<int, int> ourStatus = this->status.getStatus();
     shared_lock.unlock();
 
-    std::cout << "Max sequence number: " << ourMaxSeqNo << std::endl;
-
-    (maxSeqNoRcvd < ourMaxSeqNo) ? this->rumorMongering(maxSeqNoRcvd, clientIndex)
-        : (maxSeqNoRcvd > ourMaxSeqNo) ? this->sendStatus(clientIndex)
-        : void(); /* Stop rumor mongering */
+    for (const auto& [port, ourSeqNo] : ourStatus) {
+        auto it = receivedStatus.find(port);
+        if (it == receivedStatus.end() || it->second < ourSeqNo) {
+            for (int seqNo = (it == receivedStatus.end() ? 1 : it->second + 1); seqNo <= ourSeqNo; ++seqNo) {
+                //TODO: uncomment when implemented
+                //this->rumorMongering(port, seqNo, clientIndex);
+            }
+        }
+    }
 }
+
 
 /**
  * @brief Send the status of the server to a neighbor client
@@ -392,13 +446,23 @@ void Server::sendStatus(int index) {
     std::cout << "Sending status to " << this->clients[index]->port << std::endl;
     ClientInfo* client = this->clients[index];
 
-    /* Lock the logMutex when reading the max sequence number */
-    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-    int maxSeqNo = this->status.getMaxSeqNo();
-    shared_lock.unlock();
-
     /* Create message for client */
-    std::string statusMessage = "status " + std::to_string(maxSeqNo);
+    std::string statusMessage = "status ";
+    int count = 0;
+    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+    std::map<int, int> status = this->status.getStatus();
+    shared_lock.unlock();
+    int size = status.size();
+    for (const auto& pair : status) {
+        statusMessage += std::to_string(pair.first) + ":" + std::to_string(pair.second);
+        ++count;
+        if (count < size) {
+            statusMessage += ",";
+        }
+    }
+    std::cout << "status_message that i'm sending is: " << statusMessage << std::endl;
+
+
     const char* message = statusMessage.c_str();
     int messageLength = strlen(message);
 
