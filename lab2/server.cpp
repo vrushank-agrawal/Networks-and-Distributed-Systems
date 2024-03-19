@@ -93,7 +93,11 @@ void Server::listenClient() {
  * @brief Destroy all threads
 */
 void Server::destroyThreads() {
-    for (auto& thread : this->threads) thread.join();
+    for (auto& thread : this->threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
 }
 
 /**
@@ -150,9 +154,17 @@ void Server::closeClient(int clientIndex) {
  * @brief Close all client connections and the server
 */
 void Server::closeAllConnections() {
-    for (auto& client : this->clients)
-        close(client->socket);
-    close(this->serverSocket);
+    for (auto& client : this->clients) {
+        if (client != nullptr && client->socket > 0) {
+            
+            close(client->socket);
+            std::cout << "closing client: " << client << std::endl;
+        }
+    }
+    if (this->serverSocket > 0) {
+        close(this->serverSocket);
+    }
+    std::cout << "Closed all connections" << std::endl;
 }
 
 
