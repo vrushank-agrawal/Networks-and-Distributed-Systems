@@ -71,8 +71,7 @@ StatusMessage::StatusMessage() {}
  * @param port Port number of the server
 */
 StatusMessage::StatusMessage(int port) {
-    this->status[port+1] = 0;
-    this->status[port-1] = 0;
+    this->statusMap[port] = 0;
     this->maxSeqNo = 0;
     for (int i = 0; i < MAX_MESSAGES; i++) {
         this->chatLog.push_back(RumorMessage());
@@ -85,7 +84,7 @@ StatusMessage::StatusMessage(int port) {
  * @param seqNo Sequence number of the message
 */
 void StatusMessage::updateStatus(int port, int seqNo) {
-    this->status[port] = seqNo;
+    this->statusMap[port] = seqNo;
 }
 
 /**
@@ -119,7 +118,7 @@ void StatusMessage::updateMaxSeqNo(int seqNo) {
  * @brief Get the status of the other server
 */
 std::map<int, int> StatusMessage::getStatus() {
-    return this->status;
+    return this->statusMap;
 }
 
 /**

@@ -30,7 +30,7 @@ class RumorMessage {
 
 class StatusMessage {
     private:
-        std::map<int, int> status;
+        std::map<int, int> statusMap;
         std::vector<RumorMessage> chatLog;
         int maxSeqNo;
 
