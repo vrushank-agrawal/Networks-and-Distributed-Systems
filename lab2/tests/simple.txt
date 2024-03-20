@@ -1,9 +1,0 @@
-1 start 1 20000
-1 msg 1 Hi
-1 msg 2 Hi2
-1 msg 3 Hi3
-1 msg 4 Hi4
-1 msg 5 Hi5
-1 msg 6 Hi6
-1 msg 7 Hi7
-crash
