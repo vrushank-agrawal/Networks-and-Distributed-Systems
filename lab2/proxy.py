@@ -37,7 +37,7 @@ class ClientHandler(Thread):
             if "\n" in self.buffer:
                 (l, rest) = self.buffer.split("\n", 1)
                 self.buffer = rest
-                s = l.split()
+                s = l.split(None, 1)
                 if len(s) < 2:
                     continue
                 if s[0] == 'chatLog':
@@ -97,8 +97,7 @@ def exit(exit=False):
     sys.exit(0)
 
 def timeout():
-    time.sleep(6000)
-    print('Timeout. Exiting.')
+    time.sleep(120)
     exit(True)
 
 def main():
@@ -114,7 +113,6 @@ def main():
         except: # keyboard exception, such as Ctrl+C/D
             exit(True)
         if line == '': # end of a file
-            print('[DEBUG] line 122')
             exit()
         line = line.strip() # remove trailing '\n'
         if line == 'exit': # exit when reading 'exit' command
@@ -136,7 +134,6 @@ def main():
                 time.sleep(2)
             # start the process
             if debug:
-                # subprocess.Popen(['./main', sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'), shell=True)
                 subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=sys.stdout, stderr=sys.stderr)
             else:
                 subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]],  stdout=open('/dev/null'), stderr=open('/dev/null'))

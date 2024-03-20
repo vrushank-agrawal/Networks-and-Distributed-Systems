@@ -327,6 +327,9 @@ void Server::sendChatLog(int cliendIndex) {
     for (size_t i = 0; i < chatLogMsgs.size(); i++) {
         chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getChatText();
     }
+    if (chatLogMsgs.size() == 0) {
+        chatLog += " \x01";
+    }
     chatLog += "\n";
     std::cout << "I am sending this chatLog: " << chatLog;
 
