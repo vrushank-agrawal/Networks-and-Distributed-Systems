@@ -37,7 +37,7 @@ class ClientHandler(Thread):
             if "\n" in self.buffer:
                 (l, rest) = self.buffer.split("\n", 1)
                 self.buffer = rest
-                s = l.split(None, 1)
+                s = l.split()
                 if len(s) < 2:
                     continue
                 if s[0] == 'chatLog':
@@ -90,7 +90,6 @@ def exit(exit=False):
     time.sleep(2)
     for k in threads:
         threads[k].close()
-
     subprocess.Popen(['./stopall'], stdout=open('/dev/null'), stderr=open('/dev/null'))
     sys.stdout.flush()
     time.sleep(0.1)
@@ -134,9 +133,9 @@ def main():
                 time.sleep(2)
             # start the process
             if debug:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=sys.stdout, stderr=sys.stderr)
+                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]])
             else:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]],  stdout=open('/dev/null'), stderr=open('/dev/null'))
+                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'))
             # sleep for a while to allow the process be ready
             time.sleep(1)
             # connect to the port of the pid

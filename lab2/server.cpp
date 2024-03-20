@@ -135,7 +135,7 @@ ClientInfo* Server::acceptClient() {
 */
 int Server::addClient(ClientInfo* client) {
     std::cout << "Received initial conn req from " << client->port << std::endl;
-    
+
     if (this->clients[2] == nullptr) {
         this->clients[2] = client;
         std::cout << "First conn req, setting it as \"Proxy\"" << std::endl;
@@ -388,7 +388,7 @@ void Server::connectToLeftNeighbor() {
                 int messageLength = strlen(msg);
                 int n = sendto(left->socket, msg, messageLength, 0, (struct sockaddr*)&(left->address), this->addressLength);
                 std::cout << "Sending whoami message to " << left->port << std::endl;
-                
+
                 if (n < 0) {
                     std::cerr << "Error: Could not send data to " << left->port << std::endl;
                     this->closeClient(0);
@@ -462,14 +462,8 @@ std::map<int, int> parseStatusMessage(const std::string& message) {
 }
 
 /**
- * Evaluates the status of a client relative to the server's message log to determine if the client
- * is behind or ahead. Depending on the client's status, the server may initiate rumor mongering to
- * update the client with newer messages, or respond with its own status to reconcile differences.
- * The method parses the client's status message, compares it with the server's status, and identifies
- * messages the client lacks. These messages are then sent to the client to ensure synchronization.
- *
- * @param clientIndex The index of the client in the server's client array, used to reference the client's
- *                    status message and to send necessary updates.
+ * @brief Check the status of the server and send rumors to the client in ascending order of sequence numbers
+ * @param clientIndex The index of the client in the client array
  */
 void Server::checkStatus(int clientIndex) {
     std::string receivedStatusMsg = this->clients[clientIndex]->messageParts[1];
