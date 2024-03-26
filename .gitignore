@@ -5,3 +5,4 @@
 *.tar.bz2
 *.time.txt
 .vscode/
+*.zip
