@@ -6,3 +6,5 @@
 *.time.txt
 .vscode/
 *.zip
+*tests/
+*outputdir/
