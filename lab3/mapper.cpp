@@ -21,14 +21,6 @@ vector<string> Mapper::split(string line, char delimiter) {
     return words;
 }
 
-int Mapper::partition(string key) {
-    int hash = 0;
-    for (char c : key) {
-        hash = (hash * 31) + c;
-    }
-    return hash % this->nreduce;
-}
-
 void Mapper::createPartitionFiles() {
     for (int i = 0; i < this->nreduce; i++) {
         string filename = this->output_dir + "/map.part-" + to_string(this->worker_id) + "-" + to_string(i) + ".txt";
@@ -36,6 +28,14 @@ void Mapper::createPartitionFiles() {
         output << this->partitions[i];
         output.close();
     }
+}
+
+int Mapper::partition(string key) {
+    size_t hash = 0;
+    for (char c : key) {
+        hash = (hash * 31) + c;
+    }
+    return int(hash % this->nreduce);
 }
 
 bool Mapper::isLatin(string &w) {

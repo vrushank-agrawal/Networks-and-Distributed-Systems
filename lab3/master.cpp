@@ -64,14 +64,10 @@ void Master::reducePhase() {
     cout << "Reduce phase complete\n" << endl;
 }
 
-bool sortByValue(const pair<string, int> &a, const pair<string, int> &b) {
-    return (a.second == b.second) ? (a.first < b.first) : (a.second > b.second);
-}
-
 void Master::mergePhase() {
     cout << "Merge phase started" << endl;
 
-    std::map<string, int> counts;
+    map<string, int> counts;
     for (int i = 0; i < this->nreduce; i++) {
         string filename = this->output_dir + "/reduce.part-" + to_string(i) + ".txt";
         ifstream input(filename);
@@ -83,7 +79,6 @@ void Master::mergePhase() {
         }
     }
 
-    // sort the map by value
     vector<pair<string, int>> sorted(counts.begin(), counts.end());
     sort(sorted.begin(), sorted.end(), sortByValue);
 
@@ -117,4 +112,8 @@ int Master::countAndStoreFiles () {
         }
     }
     return count;
+}
+
+bool sortByValue(const pair<string, int> &a, const pair<string, int> &b) {
+    return (a.second == b.second) ? (a.first < b.first) : (a.second > b.second);
 }
