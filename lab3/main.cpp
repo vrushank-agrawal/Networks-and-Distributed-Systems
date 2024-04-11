@@ -80,5 +80,7 @@ int main (int argc, char*argv[]) {
         return 1;
     }
 
+    Master master(input_dir, output_dir, nworkers, nreduce);
+
     return 0;
 }
