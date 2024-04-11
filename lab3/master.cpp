@@ -95,7 +95,6 @@ void Master::mergePhase() {
     output.close();
 
     cout << "Merge phase complete" << endl;
-
 }
 
 void Master::beginMapReduce() {

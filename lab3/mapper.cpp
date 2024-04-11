@@ -38,6 +38,22 @@ void Mapper::createPartitionFiles() {
     }
 }
 
+bool Mapper::isLatin(string &w) {
+    string new_w = "";
+    for (char c : w) {
+        if (!isalpha(c)) {
+            return false;
+        }
+        if (isupper(c)) {
+            new_w += tolower(c);
+        } else {
+            new_w += c;
+        }
+    }
+    w = new_w;
+    return true;
+}
+
 void Mapper::map() {
     for (int i = this->start_file; i < this->end_file; i++) {
         string file = this->files->at(i);
@@ -46,6 +62,7 @@ void Mapper::map() {
         while (getline(input, line)) {
             vector<string> words = this->split(line, ' ');
             for (string word : words) {
+                if (!this->isLatin(word)) continue;
                 int part = this->partition(word);
                 this->partitions[part] += (word + ",1\n");
             }

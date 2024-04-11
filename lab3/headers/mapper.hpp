@@ -7,9 +7,6 @@ class Mapper {
     public:
         Mapper(int id, string input, string output, int start, int end, int nreduce, vector<string> *files);
         void map();
-        vector<string> split(string line, char delimiter);
-        void createPartitionFiles();
-        int partition(string key);
 
     private:
         int worker_id;
@@ -20,6 +17,11 @@ class Mapper {
         int end_file;
         vector<string> *files;
         vector<string> partitions;
+
+        vector<string> split(string line, char delimiter);
+        void createPartitionFiles();
+        int partition(string key);
+        bool isLatin(string &word);
 };
 
 #endif // MAPPER_HPP
