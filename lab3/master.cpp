@@ -9,7 +9,7 @@ Master::Master(string input_dir, string output_dir, int nworkers, int nreduce) {
 }
 
 void Master::mapPhase() {
-    cout << "Map phase started" << endl;
+    cout << "\nMap phase started" << endl;
 
     // count number of files in input directory
     int nFiles = this->countAndStoreFiles();

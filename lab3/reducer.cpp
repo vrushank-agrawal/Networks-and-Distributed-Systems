@@ -5,10 +5,12 @@ Reducer::Reducer(int id, string input_dir, string output_dir, int nworkers) {
     this->input_dir = input_dir;
     this->output_dir = output_dir;
     this->nworkers = nworkers;
-    this->reduce();
+    // this->reduce();
 }
 
 void Reducer::reduce() {
+    cout << "Reducer " << this->worker_id << " started" << endl;
+
     vector<string> files;
     for (int i = 0; i < this->nworkers; i++) {
         string filename = this->output_dir + "map.part-" + to_string(i) + "-" + to_string(this->worker_id) + ".txt";

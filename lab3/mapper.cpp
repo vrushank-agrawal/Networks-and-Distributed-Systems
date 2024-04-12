@@ -56,6 +56,7 @@ bool Mapper::isLatin(string &w) {
 
 void Mapper::map() {
     for (int i = this->start_file; i < this->end_file; i++) {
+        cout << "Mapping file: " << this->files->at(i) << endl;
         string file = this->files->at(i);
         ifstream input(file);
         string line;
