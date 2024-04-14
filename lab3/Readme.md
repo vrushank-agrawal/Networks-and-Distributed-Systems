@@ -5,6 +5,8 @@ Names: Vrushank Agrawal (vca4)
 
 ## High Level Details
 
+Run ``make`` to generate the executable (`mapreduce`).
+
 The code is separated into three main classes: Master, Mapper, and Reducer which are implemented in the master.cpp, mapper.cpp, and reducer.cpp files respectively. The headers for the classes are in the headers folder and are called through Makefile for compilation and linking.
 
 ## ./mapreduce
