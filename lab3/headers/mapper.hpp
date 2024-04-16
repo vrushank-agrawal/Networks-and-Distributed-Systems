@@ -76,6 +76,13 @@ class Mapper {
          * @return false if the word is not latin
         */
         bool isLatin(string &word);
+
+        /**
+         * @brief In-place word stripping around apostrophes and commas
+         *
+         * @param words the words to strip
+        */
+        void symbolStrip(vector<string> &words);
 };
 
 #endif // MAPPER_HPP
