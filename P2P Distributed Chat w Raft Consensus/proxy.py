@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-The proxy program for CS5450  -Tingwei.
+The proxy program for CS5450 raft project --Tingwei.
 """
 
 import sys
@@ -14,7 +14,10 @@ threads = {}
 
 msgs = {}
 
-
+ack_lock = Lock()
+acked_list = {}
+wait_for_ack_list = {}
+wait_for_ack = False
 wait_chat_log = False
 
 started_processes = {}
@@ -32,7 +35,7 @@ class ClientHandler(Thread):
         self.valid = True
 
     def run(self):
-        global threads, wait_chat_log
+        global threads, wait_chat_log, wait_for_ack
         while self.valid:
             if "\n" in self.buffer:
                 (l, rest) = self.buffer.split("\n", 1)
@@ -40,17 +43,26 @@ class ClientHandler(Thread):
                 s = l.split()
                 if len(s) < 2:
                     continue
-                if s[0] == 'chatLog':
+                if s[0] == 'ack':
+                    mid = int(s[1])
+                    ack_lock.acquire()
+                    acked_list[mid] = True
+                    if mid in wait_for_ack_list:
+                        del wait_for_ack_list[mid]
+                    if len(wait_for_ack_list) == 0:
+                        wait_for_ack = False
+                    ack_lock.release()
+                elif s[0] == 'chatLog':
                     chatLog = s[1]
-                    print(chatLog)
+                    print (chatLog)
                     wait_chat_log = False
                 else:
-                    print( 'WRONG MESSAGE:', s)
+                    print ('WRONG MESSAGE:', s)
             else:
                 try:
                     data = self.sock.recv(1024)
                     #sys.stderr.write(data)
-                    self.buffer += data.decode('utf-8')
+                    self.buffer += data
                 except:
                     #print sys.exc_info()
                     self.valid = False
@@ -60,7 +72,7 @@ class ClientHandler(Thread):
 
     def send(self, s):
         if self.valid:
-            self.sock.send((str(s) + '\n').encode('utf-8'))
+            self.sock.send(str(s) + '\n')
 
     def close(self):
         try:
@@ -100,7 +112,7 @@ def timeout():
     exit(True)
 
 def main():
-    global threads, wait_chat_log, started_processes, debug
+    global threads, wait_chat_log, wait_for_ack, started_processes, debug
     timeout_thread = Thread(target = timeout, args = ())
     timeout_thread.daemon = True
     timeout_thread.start()
@@ -115,6 +127,17 @@ def main():
             exit()
         line = line.strip() # remove trailing '\n'
         if line == 'exit': # exit when reading 'exit' command
+            if wait_for_ack: # waitForAck wait_for_acks these commands
+                time.sleep(2)
+                if wait_for_ack:
+                    ack_lock.acquire()
+                    to_resend = wait_for_ack_list.copy()
+                    ack_lock.release()
+                    for m in to_resend:
+                        if to_resend[m] >= 0:
+                            send(to_resend[m], msgs[m])
+            while wait_for_ack:
+                time.sleep(0.1)
             exit()
         sp1 = line.split(None, 1)
         sp2 = line.split()
@@ -122,7 +145,14 @@ def main():
             continue
         pid = int(sp2[0]) # first field is pid
         cmd = sp2[1] # second field is command
-        if cmd == 'start':
+        if cmd == 'waitForAck':
+            mid = int(sp2[2])
+            ack_lock.acquire()
+            if mid not in acked_list:
+                wait_for_ack = True
+                wait_for_ack_list[mid] = pid
+            ack_lock.release()
+        elif cmd == 'start':
             port = int(sp2[3])
             # sleep a while if a process is going to recover -- to avoid the
             # case that the process is started but the previous one hasn't
@@ -143,6 +173,18 @@ def main():
             threads[pid] = handler
             handler.start()
         else:
+            if wait_for_ack: # waitForAck wait_for_acks these commands
+                time.sleep(2)
+                if wait_for_ack:
+                    ack_lock.acquire()
+                    to_resend = wait_for_ack_list.copy()
+                    ack_lock.release()
+                    for m in to_resend:
+                        if to_resend[m] >= 0:
+                            send(to_resend[m], msgs[m])
+            while wait_for_ack:
+                time.sleep(0.1)
+
             if cmd == 'msg': # message msgid msg
                 msgs[int(sp2[2])] = sp1[1]
                 send(pid, sp1[1])
