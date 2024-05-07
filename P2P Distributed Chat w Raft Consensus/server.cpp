@@ -18,9 +18,6 @@ Server::~Server() {
     this->destroyThreads();
 }
 
-/**
- * @brief Start the server and bind it to the specified port
-*/
 void Server::start() {
     this->serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (this->serverSocket < 0) {
@@ -45,9 +42,6 @@ void Server::start() {
     }
 }
 
-/**
- * @brief Listen for clients to connect
-*/
 void Server::listenClient() {
     /* Start thread to connect to left neighbor and detach it */
     std::thread temp = std::thread(&Server::connectToLeftNeighbor, this);
@@ -103,9 +97,6 @@ void Server::listenClient() {
  *                           Server Socket methods                             *
  * *****************************************************************************/
 
-/**
- * @brief Destroy all threads
-*/
 void Server::destroyThreads() {
     for (auto& thread : this->threads) {
         if (thread.joinable()) {
@@ -114,9 +105,6 @@ void Server::destroyThreads() {
     }
 }
 
-/**
- * @brief Accept a new client connection
-*/
 ClientInfo* Server::acceptClient() {
     ClientInfo* client = new ClientInfo();
     client->socket = accept(this->serverSocket, (struct sockaddr *) &(client->address), &(this->addressLength));
@@ -129,10 +117,6 @@ ClientInfo* Server::acceptClient() {
     return client;
 }
 
-/**
- * @brief Add a client to the clients array
- * @param client The client to add
-*/
 int Server::addClient(ClientInfo* client) {
     std::cout << "Received initial conn req from " << client->port << std::endl;
 
@@ -150,25 +134,16 @@ int Server::addClient(ClientInfo* client) {
     }
 }
 
-/**
- * @brief Check if a certain client is connected
-*/
 bool Server::clientConnected(int clientIndex) {
     return this->clients[clientIndex] != nullptr;
 }
 
-/**
- * @brief Close a client connection
-*/
 void Server::closeClient(int clientIndex) {
     std::cout << "Closing client connection " << this->clients[clientIndex]->port << std::endl;
     close(this->clients[clientIndex]->socket);
     this->clients[clientIndex] = nullptr;
 }
 
-/**
- * @brief Close all client connections and the server
-*/
 void Server::closeAllConnections() {
     for (auto& client : this->clients) {
         if (client != nullptr && client->socket > 0) {
@@ -186,10 +161,6 @@ void Server::closeAllConnections() {
  *                           Message handling methods                          *
  * *****************************************************************************/
 
-/**
- * @brief Read a message from the newly accepted client
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::readMessage(int clientIndex) {
     char buffer[256];
     bzero(buffer, 256);
@@ -216,10 +187,6 @@ void Server::readMessage(int clientIndex) {
     std::cout << "Thread " << std::this_thread::get_id() << " reading message from client " << clientIndex << ": " << this->clients[clientIndex]->message << std::endl;
 }
 
-/**
- * @brief Process the message from the client by splitting it into parts
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::processMessage(int clientIndex) {
     this->clients[clientIndex]->messageParts = std::vector<std::string>();
     std::stringstream ss(this->clients[clientIndex]->message);
@@ -229,10 +196,6 @@ void Server::processMessage(int clientIndex) {
     }
 }
 
-/**
- * @brief Decode the message from the client and perform the appropriate action
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::decodeMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     (messageParts[0] == "msg") ? this->logProxyMessage(clientIndex)
@@ -243,10 +206,6 @@ void Server::decodeMessage(int clientIndex) {
         : void(std::cerr << "Error: Unknown message type" << std::endl);
 }
 
-/**
- * @brief Receive messages from a connected client untill disconnected
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::rcvMessages(int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
     std::cout << "Receiving messages from client " << client->port << std::endl;
@@ -283,10 +242,6 @@ void Server::rcvMessages(int clientIndex) {
  *                           Server-Proxy interaction                          *
  * *****************************************************************************/
 
-/**
- * @brief Add the received message from the proxy to the chat log
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::logProxyMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
@@ -303,9 +258,6 @@ void Server::logProxyMessage(int clientIndex) {
     unique_lock.unlock();
 }
 
-/**
- * @brief Close the server and all client connections
-*/
 void Server::crashSequence() {
     std::cout << "Crashing..." << std::endl;
     this->closeAllConnections();
@@ -313,10 +265,6 @@ void Server::crashSequence() {
     exit(0);
 }
 
-/**
- * @brief Send the chat log to the proxy
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::sendChatLog(int cliendIndex) {
     /* Lock the logMutex when reading the chat log */
     std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
@@ -356,9 +304,6 @@ void Server::sendChatLog(int cliendIndex) {
  *                           Server-Server interaction                        *
  * *****************************************************************************/
 
-/**
- * @brief Connect to the left neighbor and receive messages from it
-*/
 void Server::connectToLeftNeighbor() {
     /* We reconnect to the left neighbor if the connection is lost */
     while (true) {
@@ -403,9 +348,6 @@ void Server::connectToLeftNeighbor() {
     }
 }
 
-/**
- * @brief Perform anti-entropy by randomly sending status to a neighbor
-*/
 void Server::antiEntropy() {
     std::cout << "Starting anti-entropy..." << std::endl;
     while (true) {
@@ -418,10 +360,6 @@ void Server::antiEntropy() {
 }
 
 
-/**
- * @brief Add the received rumor message from a neighbor to the chat log
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::logRumorMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     assert(messageParts.size() == 2 && "Error: rumor should have 2 parts");
@@ -437,34 +375,6 @@ void Server::logRumorMessage(int clientIndex) {
 }
 
 
-/**
- * Helper method to parse incoming status message
- *
- * @param message Status msg payload in the form <port>:<seqNo>,<port>:<seqNo>,...
- * @return std::map status of the sender
- */
-std::map<int, int> parseStatusMessage(const std::string& message) {
-    std::map<int, int> statusMap;
-    std::stringstream ss(message);
-    std::string item;
-
-    while (getline(ss, item, ',')) {
-        std::stringstream itemStream(item);
-        std::string keyStr, valueStr;
-
-        if (getline(itemStream, keyStr, ':') && getline(itemStream, valueStr)) {
-            int port = std::stoi(keyStr);
-            int maxSeqNum = std::stoi(valueStr);
-            statusMap[port] = maxSeqNum;
-        }
-    }
-    return statusMap;
-}
-
-/**
- * @brief Check the status of the server and send rumors to the client in ascending order of sequence numbers
- * @param clientIndex The index of the client in the client array
- */
 void Server::checkStatus(int clientIndex) {
     std::string receivedStatusMsg = this->clients[clientIndex]->messageParts[1];
     std::map<int, int> receivedStatus = parseStatusMessage(receivedStatusMsg);
@@ -485,10 +395,6 @@ void Server::checkStatus(int clientIndex) {
 }
 
 
-/**
- * @brief Send the status of the server to a neighbor client
- * @param index The index of the client in the clients array
-*/
 void Server::sendStatus(int index) {
     std::cout << "Sending status to " << this->clients[index]->port << std::endl;
     ClientInfo* client = this->clients[index];
@@ -520,11 +426,6 @@ void Server::sendStatus(int index) {
     }
 }
 
-/**
- * @brief Send a message to the client with the next message in the chat log
- * @param maxSeqNoRcvd The maximum sequence number with the client
- * @param clientIndex The index of the client in the clients array
-*/
 void Server::rumorMongering(int from, int seqNo, int clientIndex) {
     ClientInfo* client = this->clients[clientIndex];
 
@@ -549,4 +450,29 @@ void Server::rumorMongering(int from, int seqNo, int clientIndex) {
 
     /* Message sent */
     std::cout << "Rumor mongering msg " << seqNo+1 << std::endl;
+}
+
+
+/**
+ * Helper method to parse incoming status message
+ *
+ * @param message Status msg payload in the form <port>:<seqNo>,<port>:<seqNo>,...
+ * @return std::map status of the sender
+ */
+std::map<int, int> parseStatusMessage(const std::string& message) {
+    std::map<int, int> statusMap;
+    std::stringstream ss(message);
+    std::string item;
+
+    while (getline(ss, item, ',')) {
+        std::stringstream itemStream(item);
+        std::string keyStr, valueStr;
+
+        if (getline(itemStream, keyStr, ':') && getline(itemStream, valueStr)) {
+            int port = std::stoi(keyStr);
+            int maxSeqNum = std::stoi(valueStr);
+            statusMap[port] = maxSeqNum;
+        }
+    }
+    return statusMap;
 }
