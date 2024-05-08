@@ -4,11 +4,16 @@
  * @brief Construct a new Server object
  * @param port The port to bind the server to
 */
-Server::Server(int totalServers, int port) {
+Server::Server(int pid, int totalServers, int port) {
     this->port = port;
     this->totalServers = totalServers;
+    this->pid = pid;
+    if (pid == 0) this->serverCurrentRole = LEADER;
+
     printf("Server created with port=%d\n", port);
     printf("Total servers=%d\n", totalServers);
+    printf("Your role is %s\n", (this->serverCurrentRole == LEADER) ? "LEADER" : "FOLLOWER");
+
     this->status = StatusMessage(port);
     for (auto& client : this->clients)
         client = nullptr;
@@ -52,9 +57,9 @@ void Server::listenClient() {
     this->threads.emplace_back(std::move(temp));
 
     /* Start thread to perform anti-entropy and detach it */
-    std::thread antiEntropyThread(&Server::antiEntropy, this);
-    antiEntropyThread.detach();
-    this->threads.emplace_back(std::move(antiEntropyThread));
+    // std::thread antiEntropyThread(&Server::antiEntropy, this);
+    // antiEntropyThread.detach();
+    // this->threads.emplace_back(std::move(antiEntropyThread));
 
     std::cout << "Listening for clients..." << std::endl;
     while (true) {
@@ -73,6 +78,7 @@ void Server::listenClient() {
 
         // proxy
         if (this->clients[clientIndex]->port != this->port+1) {
+            printf("Rcvd from port number %d\n", this->clients[clientIndex]->port);
             this->processMessage(clientIndex);
             this->decodeMessage(clientIndex);
         }
@@ -202,9 +208,9 @@ void Server::processMessage(int clientIndex) {
 void Server::decodeMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     (messageParts[0] == "msg") ? this->logProxyMessage(clientIndex)
-        : (messageParts[0] == "rumor") ? this->logRumorMessage(clientIndex)
+        // : (messageParts[0] == "rumor") ? this->logRumorMessage(clientIndex)
         : (messageParts[0] == "get" && messageParts[1] == "chatLog") ? this->sendChatLog(clientIndex)
-        : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
+        // : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
         : (messageParts[0] == "crash") ? this->crashSequence()
         : void(std::cerr << "Error: Unknown message type" << std::endl);
 }
@@ -245,20 +251,81 @@ void Server::rcvMessages(int clientIndex) {
  *                           Server-Proxy interaction                          *
  * *****************************************************************************/
 
+void Server::sendRelayMessage(int clientIndex) {
+    std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
+    // aggregate the message parts and simply send it to the socket of the client index as one message
+    std::string message = "";
+    for (size_t i = 1; i < messageParts.size(); i++) {
+        message += messageParts[i] + " ";
+    }
+    message += "\n";
+    const char* msg = message.c_str();
+    int messageLength = strlen(msg);
+
+    int n = sendto(this->clients[clientIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[clientIndex]->address), this->addressLength);
+    if (n < 0) {
+        std::cerr << "Error: Could not send data to proxy! " << std::endl;
+        std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
+        this->closeClient(clientIndex);
+    }
+}
+
+void Server::relayMessage(bool towardsLeader, int clientIndex) {
+    if (this->serverCurrentRole == CANDIDATE) {
+        // idk
+    } else if (this->serverCurrentRole == FOLLOWER) {
+        // send to leader
+        if (towardsLeader) {
+            if (this->currLeaderIndex > this->pid) {
+                // foward to right
+                printf("Forwarding message to right\n");
+                this->sendRelayMessage(1);
+            } else {
+                // forward to left
+                printf("Forwarding message to left\n");
+                this->sendRelayMessage(0);
+            }
+        } else {
+            if (this->currLeaderIndex > this->pid) {
+                // forward to left
+                printf("Forwarding message to left\n");
+                this->sendRelayMessage(0);
+            } else {
+                // forward to right
+                printf("Forwarding message to right\n");
+                this->sendRelayMessage(1);
+            }
+        }
+
+    } else {
+        // error
+    }
+}
+
 void Server::logProxyMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
 
-    std::string seq = messageParts[1];
-    std::string message = messageParts[2];
-    message = "from:" + std::to_string(this->port) + "," + "chatText:" + message + "," + "seqNo:" + seq;
 
-    std::cout << "Adding message in logProxyMessage(): " << message << std::endl;
+    if (this->serverCurrentRole == LEADER) {
+        // start commit process
+        printf("Leader received message from %d\n", this->clients[clientIndex]->port);
+    } else {
+        // relay message to leader
+        this->relayMessage(true, clientIndex);
+    }
 
-    RumorMessage rumor(message);
-    std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
-    this->status.addMessageToLog(rumor, std::stoi(seq));
-    unique_lock.unlock();
+
+    // message = "from:" + std::to_string(this->port) + "," + "chatText:" + message + "," + "seqNo:" + seq;
+
+    // std::cout << "Adding message in logProxyMessage(): " << message << std::endl;
+
+    // RumorMessage rumor(message);
+
+
+    // std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
+    // this->status.addMessageToLog(rumor, std::stoi(seq));
+    // unique_lock.unlock();
 }
 
 void Server::crashSequence() {
@@ -351,8 +418,11 @@ void Server::connectToLeftNeighbor() {
     }
 }
 
-void Server::antiEntropy() {
-    std::cout << "Starting anti-entropy..." << std::endl;
+void Server::heartbeat() {
+    // confirm that I am the leader
+
+
+    std::cout << "Starting heartbeat..." << std::endl;
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5000));
         int random = rand() % 2;
