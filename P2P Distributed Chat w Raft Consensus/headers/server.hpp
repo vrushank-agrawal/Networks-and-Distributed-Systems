@@ -41,10 +41,12 @@ class Server {
          * ***************************/
         int port;
         int totalServers;
+        int currentTerm;
         int pid;
         int serverSocket;
+        int ackReceived;
         socklen_t addressLength = sizeof(struct sockaddr_in);
-        ClientInfo* clients[3];
+        ClientInfo* clients[4];
 
         ServerStatus serverCurrentRole = FOLLOWER;
         int currLeaderIndex = 0;
@@ -123,9 +125,15 @@ class Server {
          * Server-Proxy interaction *
          * ***************************/
 
-        void sendRelayMessage(int clientIndex, int fromIndex);
+        void sendRelayMessage(int clientIndex, int fromIndex, std::string messageType);
 
-        void relayMessage(bool towardsLeader, int clientIndex);
+        void relayMessage(bool towardsLeader, int clientIndex, std::string messageType);
+
+        void askForCommit(int toIndex, int fromIndex);
+
+        void handleReady2C(int fromIndex);
+
+        void handleReady2CAck(int fromIndex);
 
         /**
          * @brief Add the received message from the proxy to the chat log
