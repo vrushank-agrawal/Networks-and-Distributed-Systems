@@ -51,6 +51,7 @@ class ClientHandler(Thread):
                         del wait_for_ack_list[mid]
                     if len(wait_for_ack_list) == 0:
                         wait_for_ack = False
+                    print("ack received for " + str(mid))
                     ack_lock.release()
                 elif s[0] == 'chatLog':
                     chatLog = s[1]

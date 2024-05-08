@@ -11,6 +11,7 @@ Server::Server(int pid, int totalServers, int port) {
     this->currentTerm = 0;
     this->ackReceived = 0;
     if (pid == 0) this->serverCurrentRole = LEADER;
+    this->log = Log();
 
     // std::cout << "[" << this->pid << "]" <<"Server created with port=" << port;
     // std::cout << "[" << this->pid << "]" <<"Total servers=" << totalServers;
@@ -226,8 +227,25 @@ void Server::decodeMessage(int clientIndex) {
         : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
         : (messageParts[0] == "ready2c") ? this->handleReady2C(clientIndex)
         : (messageParts[0] == "ready2cAck") ? this->handleReady2CAck(clientIndex)
+        : (messageParts[0] == "commit") ? this->handleCommit(clientIndex)
         : (messageParts[0] == "iamproxy") ? void()
         : void(std::cerr << "Error: Unknown message type" << std::endl);
+}
+
+void Server::handleCommit(int clientIndex) {
+    std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
+
+    int msgId = std::stoi(messageParts[1]);
+    if (this->serverCurrentRole == FOLLOWER) {
+        std::cout << "[" << this->pid << "]" <<"Received commit for " << msgId << "\n";
+    }
+    for (size_t i = 0; i < this->log.size(); i++) {
+        if (this->log.getEntry(i).messageId == msgId) {
+            this->log.getEntry(i).isCommitted = true;
+            break;
+        }
+    }
+    std::cout << "[" << this->pid << "]" <<"Committed! msgId: " << msgId << " " << this->log.getEntry(msgId).isCommitted << "\n";
 }
 
 void Server::handleReady2C(int clientIndex) {
@@ -242,6 +260,7 @@ void Server::handleReady2C(int clientIndex) {
     // TODO: handle term stuff
 
     // append message to log
+    this->log.appendEntry(LogEntry(this->currentTerm, msgId, msg));
 
     // send a ready2cAck to the leader
     std::cout << "[" << this->pid << "]" <<"Sending ready2cAck to leader\n";
@@ -259,19 +278,31 @@ void Server::handleReady2C(int clientIndex) {
 void Server::handleReady2CAck(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     std::cout << "[" << this->pid << "]" <<"Received ready2cAck from " << this->clients[clientIndex]->port << "\n";
-    assert(messageParts.size() == 3 && "Error: ready2cAck should have 3 parts");
+    if (messageParts.size() != 3) {
+        std::cout << "[" << this->pid << "]" <<"Error: ready2cAck should have 3 parts" << std::endl;
+        std::cout << "[" << this->pid << "]" <<"Received message: " << this->clients[clientIndex]->message << std::endl;
+        // exit(1);
+        return;
+    }
 
     if (this->serverCurrentRole == LEADER) {
         ackReceived++;
         if (ackReceived >= (int) (this->totalServers / 2)) {
             // commit to the log
-            std::cout << "[" << this->pid << "]" << "Committing to the log" << std::endl;
+            std::cout << "[" << this->pid << "]" << "Committing " << messageParts[1] << " to the log" << std::endl;
 
             // commit the message to our log/status
-
+            this->handleCommit(clientIndex);
 
             // send commit to all the followers
+            this->clients[3]->message = "commit " + messageParts[1] +"\n";
+            this->relayMessage(false, 3, "commit");
+            this->relayMessage(false, 3, "commit");
 
+            // send back an ack to the proxy client (2)
+            std::string ackmessage = "ack " + messageParts[1] + " " + messageParts[1] + "\n";
+            std::cout << "[" << this->pid << "]" <<"Sending ack back to Proxy for " << messageParts[1] << "\n";
+            sendto(this->clients[2]->socket, ackmessage.c_str(), ackmessage.size(), 0, (struct sockaddr*)&(this->clients[2]->address), this->addressLength);
         }
 
     } else if (this->serverCurrentRole == FOLLOWER) {
@@ -389,18 +420,7 @@ void Server::logProxyMessage(int clientIndex) {
             this->askForCommit(1, clientIndex);
         }
 
-        // std::string seq = messageParts[1];
-        // std::string message = messageParts[2];
-
-        // message = "from:" + std::to_string(this->port) + "," + "chatText:" + message + "," + "seqNo:" + seq;
-
-        // std::cout << "[" << this->pid << "]" << "Adding message in logProxyMessage(): " << message << std::endl;
-
-        // RumorMessage rumor(message);
-
-        // std::unique_lock<std::shared_mutex> unique_lock(this->logMutex);
-        // this->status.addMessageToLog(rumor, std::stoi(seq));
-        // unique_lock.unlock();
+        this->log.appendEntry(LogEntry(this->currentTerm, std::stoi(messageParts[1]), messageParts[2]));
     } else {
         // relay message to leader
         this->relayMessage(true, clientIndex, "msg");
@@ -436,36 +456,56 @@ void Server::crashSequence() {
 
 void Server::sendChatLog(int cliendIndex) {
     /* Lock the logMutex when reading the chat log */
-    std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
-    std::vector<RumorMessage> chatLogMsgs = this->status.getChatLog();
-    shared_lock.unlock();
+    // std::shared_lock<std::shared_mutex> shared_lock(this->logMutex);
+    // std::vector<RumorMessage> chatLogMsgs = this->status.getChatLog();
+    // shared_lock.unlock();
 
+    std::vector<LogEntry> chatLogMsgs = this->log.getCommittedEntries();
     std::string chatLog = "chatLog";
-    for (size_t i = 0; i < chatLogMsgs.size(); i++) {
-        chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getChatText();
-    }
     if (chatLogMsgs.size() == 0) {
         chatLog += " \x01";
     }
+    
+    for (size_t i = 0; i < chatLogMsgs.size(); i++) {
+        chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].message;    
+    }
     chatLog += "\n";
-    std::cout << "[" << this->pid << "]" << "I am sending this chatLog: " << chatLog;
-
+    std::cout << "[" << this->pid << "]" << "I am sending this chatLog: " << chatLog;        
     const char* msg = chatLog.c_str();
     int messageLength = strlen(msg);
-
-    constexpr int numClients = sizeof(this->clients) / sizeof(this->clients[0]);
-    if (cliendIndex < 0 || cliendIndex >= numClients) {
-        std::cerr << "Error: Invalid client index " << cliendIndex << std::endl;
-        return;
-    }
-
     int n = sendto(this->clients[cliendIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[cliendIndex]->address), this->addressLength);
-
     if (n < 0) {
         std::cerr << "Error: Could not send data to proxy! " << std::endl;
         std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
         this->closeClient(cliendIndex);
     }
+
+    // std::string chatLog = "chatLog";
+    // for (size_t i = 0; i < chatLogMsgs.size(); i++) {
+    //     chatLog += (i > 0 ? "," : " ") + chatLogMsgs[i].getChatText();
+    // }
+    // if (chatLogMsgs.size() == 0) {
+    //     chatLog += " \x01";
+    // }
+    // chatLog += "\n";
+    // std::cout << "[" << this->pid << "]" << "I am sending this chatLog: " << chatLog;
+
+    // const char* msg = chatLog.c_str();
+    // int messageLength = strlen(msg);
+
+    // constexpr int numClients = sizeof(this->clients) / sizeof(this->clients[0]);
+    // if (cliendIndex < 0 || cliendIndex >= numClients) {
+    //     std::cerr << "Error: Invalid client index " << cliendIndex << std::endl;
+    //     return;
+    // }
+
+    // int n = sendto(this->clients[cliendIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[cliendIndex]->address), this->addressLength);
+
+    // if (n < 0) {
+    //     std::cerr << "Error: Could not send data to proxy! " << std::endl;
+    //     std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
+    //     this->closeClient(cliendIndex);
+    // }
 }
 
 

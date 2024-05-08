@@ -5,6 +5,74 @@
 
 #define MAX_MESSAGES 1024
 
+
+class LogEntry {
+    public:
+        int term;
+        int messageId;
+        std::string message;
+        bool isCommitted;
+
+        LogEntry(int term, int messageId, std::string message, bool isCommitted = false)
+            : term(term), messageId(messageId), message(std::move(message)) {}
+};
+
+class Log {
+    private:
+        std::vector<LogEntry> entries;
+    public:
+    // Append a new entry to the log
+    void appendEntry(const LogEntry& entry) {
+        entries.push_back(entry);
+    }
+
+    std::vector<LogEntry> getEntries() const {
+        return entries;
+    }
+
+    std::vector<LogEntry> getCommittedEntries() const {
+        std::vector<LogEntry> committedEntries;
+        for (size_t i = 0; i < entries.size(); i++) {
+            if (entries[i].isCommitted) {
+                committedEntries.push_back(entries[i]);
+            }
+        }
+        return committedEntries;
+    }
+
+    // Get a specific log entry by index
+    const LogEntry& getEntry(size_t index) const {
+        // Ensure the index is valid
+        if (index >= entries.size()) {
+            throw std::out_of_range("Log index out of range");
+        }
+        return entries[index];
+    }
+
+    // Get a specific log entry by index (non-const version)
+    LogEntry& getEntry(size_t index) {
+        // Ensure the index is valid
+        if (index >= entries.size()) {
+            throw std::out_of_range("Log index out of range");
+        }
+        return entries[index];
+    }
+
+    // Get the latest term
+    int getLastTerm() const {
+        if (entries.empty()) {
+            return 0;  // Return 0 if log is empty
+        }
+        return entries.back().term;
+    }
+
+    // Get the number of entries in the log
+    size_t size() const {
+        return entries.size();
+    }
+
+};
+
 class RumorMessage {
     private:
         std::string message;

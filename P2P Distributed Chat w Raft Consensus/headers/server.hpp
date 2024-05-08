@@ -52,7 +52,9 @@ class Server {
         int currLeaderIndex = 0;
 
         std::shared_mutex logMutex;
-        StatusMessage status;
+        Log log;
+
+        StatusMessage status; // TODO remove
         std::vector<std::thread> threads;
 
         /*****************************
@@ -134,6 +136,8 @@ class Server {
         void handleReady2C(int fromIndex);
 
         void handleReady2CAck(int fromIndex);
+
+        void handleCommit(int clientIndex);
 
         /**
          * @brief Add the received message from the proxy to the chat log
