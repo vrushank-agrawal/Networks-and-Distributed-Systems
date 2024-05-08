@@ -7,8 +7,9 @@ int main(int argc, char* argv[]) {
     }
 
     int port = atoi(argv[3]);
+    int servers = atoi(argv[2]);
 
-    Server server(port);
+    Server server(servers, port);
     server.start();
 
     std::cout << "Server started on port " << port << std::endl;

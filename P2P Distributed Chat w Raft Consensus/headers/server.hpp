@@ -16,7 +16,7 @@ typedef struct ClientInfo {
 
 class Server {
     public:
-        Server(int port);
+        Server(int totalServers, int port);
         ~Server();
 
         /**
@@ -34,6 +34,7 @@ class Server {
          * Server variables          *
          * ***************************/
         int port;
+        int totalServers;
         int serverSocket;
         socklen_t addressLength = sizeof(struct sockaddr_in);
         ClientInfo* clients[3];

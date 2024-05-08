@@ -4,8 +4,11 @@
  * @brief Construct a new Server object
  * @param port The port to bind the server to
 */
-Server::Server(int port) {
+Server::Server(int totalServers, int port) {
     this->port = port;
+    this->totalServers = totalServers;
+    printf("Server created with port=%d\n", port);
+    printf("Total servers=%d\n", totalServers);
     this->status = StatusMessage(port);
     for (auto& client : this->clients)
         client = nullptr;
