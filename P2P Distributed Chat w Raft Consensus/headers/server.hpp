@@ -14,9 +14,15 @@ typedef struct ClientInfo {
     std::vector<std::string> messageParts;  /**< Message divided into 3 parts */
 } ClientInfo;
 
+typedef enum {
+    FOLLOWER,
+    CANDIDATE,
+    LEADER
+} ServerStatus;
+
 class Server {
     public:
-        Server(int totalServers, int port);
+        Server(int pid, int totalServers, int port);
         ~Server();
 
         /**
@@ -35,9 +41,13 @@ class Server {
          * ***************************/
         int port;
         int totalServers;
+        int pid;
         int serverSocket;
         socklen_t addressLength = sizeof(struct sockaddr_in);
         ClientInfo* clients[3];
+
+        ServerStatus serverCurrentRole = FOLLOWER;
+        int currLeaderIndex = 0;
 
         std::shared_mutex logMutex;
         StatusMessage status;
@@ -113,6 +123,10 @@ class Server {
          * Server-Proxy interaction *
          * ***************************/
 
+        void sendRelayMessage(int clientIndex);
+
+        void relayMessage(bool towardsLeader, int clientIndex);
+
         /**
          * @brief Add the received message from the proxy to the chat log
          * @param clientIndex The index of the client in the clients array
@@ -140,9 +154,9 @@ class Server {
         void connectToLeftNeighbor();
 
         /**
-         * @brief Perform anti-entropy by randomly sending status to a neighbor
+         * @brief Send heartbeat message if you are leader
         */
-        void antiEntropy();
+        void heartbeat();
 
         /**
          * @brief Add the received rumor message from a neighbor to the chat log
