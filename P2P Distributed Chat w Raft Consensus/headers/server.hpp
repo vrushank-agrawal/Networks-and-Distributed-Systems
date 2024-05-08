@@ -123,7 +123,7 @@ class Server {
          * Server-Proxy interaction *
          * ***************************/
 
-        void sendRelayMessage(int clientIndex);
+        void sendRelayMessage(int clientIndex, int fromIndex);
 
         void relayMessage(bool towardsLeader, int clientIndex);
 

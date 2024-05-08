@@ -37,7 +37,6 @@ class ClientHandler(Thread):
     def run(self):
         global threads, wait_chat_log, wait_for_ack
         while self.valid:
-            print(self.buffer)
             if "\n" in self.buffer:
                 (l, rest) = self.buffer.split("\n", 1)
                 self.buffer = rest
@@ -165,15 +164,19 @@ def main():
             # start the process
             if debug:
                 #with open('output.txt', 'a') as output_file:
-                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]])#, stdout=output_file, stderr=output_file)
+                subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]])
             else:
                 subprocess.Popen(['./process', str(pid), sp2[2], sp2[3]], stdout=open('/dev/null'), stderr=open('/dev/null'))
             # sleep for a while to allow the process be ready
             time.sleep(1)
+
             # connect to the port of the pid
             handler = ClientHandler(pid, address, port)
             threads[pid] = handler
             handler.start()
+
+            # send a message "whoami <my_port>"
+            send(pid, "iamproxy")
         else:
             if wait_for_ack: # waitForAck wait_for_acks these commands
                 time.sleep(2)
@@ -198,7 +201,6 @@ def main():
                 else:
                     while wait_chat_log: # get command blocks next get command
                         time.sleep(0.1)
-                print('sending get chatLog with sp1[1]:', sp1[1])
                 send(pid, sp1[1], set_wait=True)
 
 if __name__ == '__main__':

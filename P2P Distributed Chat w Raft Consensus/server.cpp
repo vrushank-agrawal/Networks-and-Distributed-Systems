@@ -57,7 +57,7 @@ void Server::listenClient() {
     this->threads.emplace_back(std::move(temp));
 
     /* Start thread to perform anti-entropy and detach it */
-    // std::thread antiEntropyThread(&Server::antiEntropy, this);
+    // std::thread antiEntropyThread(&Server::heartbeat, this);
     // antiEntropyThread.detach();
     // this->threads.emplace_back(std::move(antiEntropyThread));
 
@@ -73,6 +73,7 @@ void Server::listenClient() {
         ClientInfo* client = this->acceptClient();
         int clientIndex = this->addClient(client);
         if (clientIndex == -1) continue;
+        printf("Accepted new client at socket=%d\n", client->socket);
         this->readMessage(clientIndex);
         std::cout << "[" << this->pid << "]" << "accepted, added, read 1st msg from " << this->clients[clientIndex]->port << std::endl;
 
@@ -171,6 +172,7 @@ void Server::closeAllConnections() {
  * *****************************************************************************/
 
 void Server::readMessage(int clientIndex) {
+    printf("here in readMessage\n");
     char buffer[256];
     bzero(buffer, 256);
     int n = read(this->clients[clientIndex]->socket, buffer, 255);
@@ -182,6 +184,7 @@ void Server::readMessage(int clientIndex) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
     }
+    printf("here2\n");
     std::cout << "[" << this->pid << "]" << "from port=" << this->clients[clientIndex]->port << ", msg rcvd=" << buffer << std::endl;
     this->clients[clientIndex]->message = std::string(buffer, n);
 
@@ -191,6 +194,9 @@ void Server::readMessage(int clientIndex) {
         std::cout << "[" << this->pid << "]" << "Received whoami message from port=" <<  whoami_port << std::endl;
         this->clients[clientIndex]->port = whoami_port;
         this->clients[clientIndex]->address.sin_port = ntohs(whoami_port);
+    }
+    if (this->clients[clientIndex]->message == "iamproxy") {
+        printf("Received whoami message from port=%d\n", this->clients[clientIndex]->port);
     }
 
     std::cout << "[" << this->pid << "]" << "Thread " << std::this_thread::get_id() << " reading message from client " << clientIndex << ": " << this->clients[clientIndex]->message << std::endl;
@@ -210,6 +216,9 @@ void Server::decodeMessage(int clientIndex) {
     (messageParts[0] == "msg") ? this->logProxyMessage(clientIndex)
         : (messageParts[0] == "get" && messageParts[1] == "chatLog") ? this->sendChatLog(clientIndex)
         : (messageParts[0] == "crash") ? this->crashSequence()
+        : (messageParts[0] == "rumor") ? this->logRumorMessage(clientIndex)
+        : (messageParts[0] == "status") ? this->checkStatus(clientIndex)
+        : (messageParts[0] == "iamproxy") ? void()
         : void(std::cerr << "Error: Unknown message type" << std::endl);
 }
 
@@ -223,6 +232,7 @@ void Server::rcvMessages(int clientIndex) {
     bzero(buffer, 256);
     while ((n = recv(client->socket, buffer, 255, 0)) > 0) {
         client->message = buffer;
+        printf("Here1\n");
         std::cout << "[" << this->pid << "]" << "msg rcvd: " << client->message << std::endl;
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
@@ -249,10 +259,10 @@ void Server::rcvMessages(int clientIndex) {
  *                           Server-Proxy interaction                          *
  * *****************************************************************************/
 
-void Server::sendRelayMessage(int clientIndex) {
-    std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
+void Server::sendRelayMessage(int toIndex, int fromIndex) {
+    std::vector<std::string> messageParts = this->clients[fromIndex]->messageParts;
     // aggregate the message parts and simply send it to the socket of the client index as one message
-    std::string message = "";
+    std::string message = "msg ";
     for (size_t i = 1; i < messageParts.size(); i++) {
         message += messageParts[i] + " ";
     }
@@ -260,11 +270,12 @@ void Server::sendRelayMessage(int clientIndex) {
     const char* msg = message.c_str();
     int messageLength = strlen(msg);
 
-    int n = sendto(this->clients[clientIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[clientIndex]->address), this->addressLength);
+    printf("Sending message to client %d: %s\n", toIndex, msg);
+    int n = sendto(this->clients[toIndex]->socket, msg, messageLength, 0, (struct sockaddr*)&(this->clients[toIndex]->address), this->addressLength);
     if (n < 0) {
         std::cerr << "Error: Could not send data to proxy! " << std::endl;
         std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
-        this->closeClient(clientIndex);
+        this->closeClient(toIndex);
     }
 }
 
@@ -277,21 +288,21 @@ void Server::relayMessage(bool towardsLeader, int clientIndex) {
             if (this->currLeaderIndex > this->pid) {
                 // foward to right
                 printf("Forwarding message to right\n");
-                this->sendRelayMessage(1);
+                this->sendRelayMessage(1, clientIndex);
             } else {
                 // forward to left
                 printf("Forwarding message to left\n");
-                this->sendRelayMessage(0);
+                this->sendRelayMessage(0, clientIndex);
             }
         } else {
             if (this->currLeaderIndex > this->pid) {
                 // forward to left
                 printf("Forwarding message to left\n");
-                this->sendRelayMessage(0);
+                this->sendRelayMessage(0, clientIndex);
             } else {
                 // forward to right
                 printf("Forwarding message to right\n");
-                this->sendRelayMessage(1);
+                this->sendRelayMessage(1, clientIndex);
             }
         }
 
