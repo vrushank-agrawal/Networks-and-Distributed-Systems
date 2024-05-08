@@ -4,6 +4,8 @@
 #include "libraries.hpp"
 #include "messages.hpp"
 
+std::map<int, int> parseStatusMessage(const std::string& message);
+
 typedef struct ClientInfo {
     struct sockaddr_in address;     /**< Client address */
     int socket;                     /**< Client socket */
