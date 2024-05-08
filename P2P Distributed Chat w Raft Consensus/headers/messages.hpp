@@ -30,6 +30,75 @@ class Log {
         return entries;
     }
 
+    std::string getEntriesAsStringMessage() const {
+        std::string message = "";
+
+        for (const auto& entry : entries) {
+            std::string b = (entry.isCommitted) ? "1" : "0";
+            message += std::to_string(entry.term) + "," + std::to_string(entry.messageId) + "," + entry.message + "," + b + ";";
+        }
+        message+= "\n";
+        return message;
+    }
+
+    // std::vector<LogEntry> getLogEntriesFromStringMessage(const std::string& message) {
+    //     std::vector<LogEntry> entries;
+    //     std::stringstream ss(message);
+    //     std::string item;
+
+    //     // FOR LOOPS ONLY!!!!
+    //     for (int i = 0; i < message.size(); i++) {
+    //         if (message[i] == ';') {
+    //             std::string b = (entries[i].isCommitted) ? "1" : "0";
+    //             message += std::to_string(entries[i].term) + "," + std::to_string(entries[i].messageId) + "," + entries[i].message + "," + b + ";";
+    //         }
+    //     }
+
+    //     return entries;
+    // }
+
+    std::vector<LogEntry> getLogEntriesFromStringMessage(const std::string& serializedLog) {
+        std::vector<LogEntry> entries;
+        std::stringstream ss(serializedLog);
+        std::string item;
+
+        // Split by semicolon to get individual log entries
+        while (getline(ss, item, ';')) {
+            if (item.empty()) {
+                continue;
+            }
+            std::stringstream entryStream(item);
+            std::string part;
+            std::vector<std::string> parts;
+
+            // Split by comma to get term, messageId, message, and isCommitted
+            while (getline(entryStream, part, ',')) {
+                parts.push_back(part);
+            }
+
+            if (parts.size() == 4) {
+                int term = std::stoi(parts[0]);
+                int messageId = std::stoi(parts[1]);
+                std::string message = parts[2];
+                bool isCommitted = (parts[3] == "1");
+
+                entries.emplace_back(term, messageId, message, isCommitted);
+            }
+        }
+
+        return entries;
+    }
+
+    void printLogEntries() const {
+        for (const auto& entry : entries) {
+            std::cout << entry.term << "," << entry.messageId << "," << entry.message << "," << entry.isCommitted << std::endl;
+        }
+    }
+
+    void setEntries(const std::vector<LogEntry>& entries) {
+        this->entries = entries;
+    }
+
     std::vector<LogEntry> getCommittedEntries() const {
         std::vector<LogEntry> committedEntries;
         for (size_t i = 0; i < entries.size(); i++) {

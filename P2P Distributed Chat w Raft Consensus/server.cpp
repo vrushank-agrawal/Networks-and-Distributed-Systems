@@ -179,7 +179,6 @@ void Server::closeAllConnections() {
  * *****************************************************************************/
 
 void Server::readMessage(int clientIndex) {
-    std::cout << "[" << this->pid << "]" <<"here in readMessage\n";
     char buffer[256];
     bzero(buffer, 256);
     int n = read(this->clients[clientIndex]->socket, buffer, 255);
@@ -191,7 +190,6 @@ void Server::readMessage(int clientIndex) {
         std::cerr << "Error: Could not read from socket" << std::endl;
         exit(1);
     }
-    std::cout << "[" << this->pid << "]" <<"here2\n";
     std::cout << "[" << this->pid << "]" << "from port=" << this->clients[clientIndex]->port << ", msg rcvd=" << buffer << std::endl;
     this->clients[clientIndex]->message = std::string(buffer, n);
 
@@ -250,29 +248,35 @@ void Server::handleCommit(int clientIndex) {
 
 void Server::handleReady2C(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
-    assert(messageParts.size() == 4 && "Error: ready2c should have 4 parts");
+    assert(messageParts.size() == 3 && "Error: ready2c should have 3 parts");
 
     std::cout << "[" << this->pid << "]" << "Received ready2c from " << this->clients[clientIndex]->port << std::endl;
 
     int msgId = std::stoi(messageParts[1]);
     std::string msg = messageParts[2];
 
-    // TODO: handle term stuff
-
     // append message to log
-    this->log.appendEntry(LogEntry(this->currentTerm, msgId, msg));
+    std::cout << "[" << this->pid << "]" << "Incoming log entries as a string: " << msg << std::endl;
+    std::vector<LogEntry> incomingLogEntries = this->log.getLogEntriesFromStringMessage(msg);
+    std::cout << "[" << this->pid << "]" << "Parsed incoming log entries: " << std::endl;
+    this->log.printLogEntries();
 
-    // send a ready2cAck to the leader
-    std::cout << "[" << this->pid << "]" <<"Sending ready2cAck to leader\n";
-    this->clients[3]->message = "ready2cAck " + std::to_string(msgId) + " " + std::to_string(this->currentTerm) + "\n";
-    this->processMessage(3);
+    if (this->serverCurrentRole == FOLLOWER && incomingLogEntries.size() > this->log.size()) {
+        std::cout << "[" << this->pid << "]" << "Coolio, received more log entries than my log size" << std::endl;
+        this->log.setEntries(incomingLogEntries);
 
-    std::cout << "[" << this->pid << "]" <<"Relaying ready2cAck to leader\n";
-    this->relayMessage(true, 3, "ready2cAck");
+        // send a ready2cAck to the leader
+        std::cout << "[" << this->pid << "]" <<"Sending ready2cAck to leader\n";
+        this->clients[3]->message = "ready2cAck " + std::to_string(msgId) + " " + std::to_string(this->currentTerm) + "\n";
+        this->processMessage(3);
 
-    std::cout << "[" << this->pid << "]" <<"Relaying ready2c to followers\n";
-    // relay the message to your neighbors
-    this->relayMessage(false, clientIndex, "ready2c");
+        std::cout << "[" << this->pid << "]" <<"Relaying ready2cAck to leader\n";
+        this->relayMessage(true, 3, "ready2cAck");
+
+        std::cout << "[" << this->pid << "]" <<"Relaying ready2c to other followers\n";
+        // relay the message to your neighbors
+        this->relayMessage(false, clientIndex, "ready2c");
+    }
 }
 
 void Server::handleReady2CAck(int clientIndex) {
@@ -321,7 +325,6 @@ void Server::rcvMessages(int clientIndex) {
     bzero(buffer, 256);
     while ((n = recv(client->socket, buffer, 255, 0)) > 0) {
         client->message = buffer;
-        std::cout << "[" << this->pid << "]" <<"Here1\n";
         std::cout << "[" << this->pid << "]" << "msg rcvd: " << client->message << std::endl;
         this->processMessage(clientIndex);
         this->decodeMessage(clientIndex);
@@ -407,10 +410,13 @@ void Server::relayMessage(bool towardsLeader, int clientIndex, std::string messa
 void Server::logProxyMessage(int clientIndex) {
     std::vector<std::string> messageParts = this->clients[clientIndex]->messageParts;
     assert(messageParts.size() == 3 && "Error: msg should have 3 parts");
-
+    // format is "msg <msgId> <msg>"
 
     if (this->serverCurrentRole == LEADER) {
         std::cout << "[" << this->pid << "]" <<"Leader received message from " << this->clients[clientIndex]->port << "\n";
+        
+        this->log.appendEntry(LogEntry(this->currentTerm, std::stoi(messageParts[1]), messageParts[2]));
+        std::cout << "[" << this->pid << "]" << "Appended entry to my log" << std::endl;
 
         // start commit process
         if (this->clients[0] != nullptr) {
@@ -420,7 +426,6 @@ void Server::logProxyMessage(int clientIndex) {
             this->askForCommit(1, clientIndex);
         }
 
-        this->log.appendEntry(LogEntry(this->currentTerm, std::stoi(messageParts[1]), messageParts[2]));
     } else {
         // relay message to leader
         this->relayMessage(true, clientIndex, "msg");
@@ -430,10 +435,9 @@ void Server::logProxyMessage(int clientIndex) {
 void Server::askForCommit(int toIndex, int fromIndex) {
     std::vector<std::string> messageParts = this->clients[fromIndex]->messageParts;
     std::string message = "ready2c ";
-    for (size_t i = 1; i < messageParts.size(); i++) {
-        message += messageParts[i] + " ";
-    }
-    message += std::to_string(this->currentTerm) + "\n";
+    message += messageParts[1] + " ";
+    message += this->log.getEntriesAsStringMessage();
+    // format is "ready2c <msgId> <logEntries<term,messageId,message,isCommitted>;...;\n>"
 
     const char* msg = message.c_str();
     int messageLength = strlen(msg);
