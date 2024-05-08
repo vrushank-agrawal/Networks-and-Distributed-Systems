@@ -1,0 +1,11 @@
+0 start 5 20000
+1 start 5 20001
+2 start 5 20002
+3 start 5 20003
+4 start 5 20004
+1 msg 1 Alice
+2 msg 2 Bob
+3 msg 3 Carol
+2 msg 2 Bob2
+4 msg 4 David
+0 get chatLog
