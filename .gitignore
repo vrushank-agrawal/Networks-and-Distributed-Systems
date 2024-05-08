@@ -8,3 +8,6 @@
 *.zip
 *tests/
 *outputdir/
+stopall
+process
+.devcontainer
