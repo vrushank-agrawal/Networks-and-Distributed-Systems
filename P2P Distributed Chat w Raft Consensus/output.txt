@@ -1,0 +1,130 @@
+Server created with port=20000
+Total servers=3
+Your role is LEADER
+Server started on port 20000
+Listening for clients...
+Connecting to left neighbor...
+Accepted new client at socket=4
+Received initial conn req from 32908
+First conn req, setting it as "Proxy"
+Server created with port=20001
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20001
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20000
+Sending whoami message to 20000
+Receiving messages from client 20000
+Accepted new client at socket=4
+Received initial conn req from 48240
+First conn req, setting it as "Proxy"
+Server created with port=20002
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20002
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20001
+Sending whoami message to 20001
+Receiving messages from client 20001
+Accepted new client at socket=4
+Received initial conn req from 59672
+First conn req, setting it as "Proxy"
+from port=59672, msg rcvd=msg 1 hi
+
+Thread 281472892365344 reading message from client 2: msg 1 hi
+
+accepted, added, read 1st msg from 59672
+Rcvd from port number 59672
+Forwarding message to left
+Receiving messages from client 59672
+msg rcvd: get chatLog
+
+I am sending this chatLog: chatLog 
+Gracefully dumped :). port=59672
+Proxy disconnected so I'm exiting too!
+Server created with port=20000
+Total servers=3
+Your role is LEADER
+Server started on port 20000
+Listening for clients...
+Connecting to left neighbor...
+Accepted new client at socket=4
+Received initial conn req from 41102
+First conn req, setting it as "Proxy"
+Server created with port=20001
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20001
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20000
+Sending whoami message to 20000
+Receiving messages from client 20000
+Accepted new client at socket=4
+Received initial conn req from 39656
+First conn req, setting it as "Proxy"
+Server created with port=20000
+Total servers=3
+Your role is LEADER
+Server started on port 20000
+Listening for clients...
+Connecting to left neighbor...
+Accepted new client at socket=4
+Received initial conn req from 36506
+First conn req, setting it as "Proxy"
+Server created with port=20001
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20001
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20000
+Sending whoami message to 20000
+Receiving messages from client 20000
+Accepted new client at socket=4
+Received initial conn req from 52040
+First conn req, setting it as "Proxy"
+Server created with port=20000
+Total servers=3
+Your role is LEADER
+Server started on port 20000
+Listening for clients...
+Connecting to left neighbor...
+Accepted new client at socket=4
+Received initial conn req from 39222
+First conn req, setting it as "Proxy"
+Server created with port=20001
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20001
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20000
+Sending whoami message to 20000
+Receiving messages from client 20000
+Accepted new client at socket=4
+Received initial conn req from 52162
+First conn req, setting it as "Proxy"
+Server created with port=20000
+Total servers=3
+Your role is LEADER
+Server started on port 20000
+Listening for clients...
+Connecting to left neighbor...
+Accepted new client at socket=4
+Received initial conn req from 45602
+First conn req, setting it as "Proxy"
+Server created with port=20001
+Total servers=3
+Your role is FOLLOWER
+Server started on port 20001
+Listening for clients...
+Connecting to left neighbor...
+Connected to left neighbor 20000
+Sending whoami message to 20000
+Receiving messages from client 20000
+Accepted new client at socket=4
+Received initial conn req from 56336
+First conn req, setting it as "Proxy"
