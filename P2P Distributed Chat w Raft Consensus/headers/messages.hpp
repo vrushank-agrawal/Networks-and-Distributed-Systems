@@ -11,10 +11,15 @@ class LogEntry {
         int term;
         int messageId;
         std::string message;
-        bool isCommitted;
+        std::string isCommitted;
 
-        LogEntry(int term, int messageId, std::string message, bool isCommitted = false)
-            : term(term), messageId(messageId), message(std::move(message)) {}
+        LogEntry(int term, int messageId, std::string message, std::string isCommitted = "true") {
+            this->term = term;
+            this->messageId = messageId;
+            this->message = message;
+            this->isCommitted = isCommitted;
+        }
+
 };
 
 class Log {
@@ -22,20 +27,24 @@ class Log {
         std::vector<LogEntry> entries;
     public:
     // Append a new entry to the log
-    void appendEntry(const LogEntry& entry) {
+    void appendEntry(LogEntry entry) {
+        std::cout << "Printing log entries before push_back: " << std::endl;
+        this->printLogEntries();
         entries.push_back(entry);
+        std::cout << "Appended entry " << entry.term << "," << entry.messageId << "," << entry.message << "," << entry.isCommitted << std::endl;
+        std::cout << "Printing log entries: " << std::endl;
+        this->printLogEntries();
     }
 
-    std::vector<LogEntry> getEntries() const {
+    std::vector<LogEntry> getEntries() {
         return entries;
     }
 
-    std::string getEntriesAsStringMessage() const {
+    std::string getEntriesAsStringMessage() {
         std::string message = "";
 
-        for (const auto& entry : entries) {
-            std::string b = (entry.isCommitted) ? "1" : "0";
-            message += std::to_string(entry.term) + "," + std::to_string(entry.messageId) + "," + entry.message + "," + b + ";";
+        for (const auto& entry : this->entries) {
+            message += std::to_string(entry.term) + "," + std::to_string(entry.messageId) + "," + entry.message + "," + entry.isCommitted  + ";";
         }
         message+= "\n";
         return message;
@@ -80,9 +89,13 @@ class Log {
                 int term = std::stoi(parts[0]);
                 int messageId = std::stoi(parts[1]);
                 std::string message = parts[2];
-                bool isCommitted = (parts[3] == "1");
+                std::string isCommitted = parts[3];
+                std::cout << "inside getLogEntriesFromStringMessage, item: " << item << std::endl;
+                std::cout << "term: " << term << ", messageId: " << messageId << ", message: " << message << ", isCommitted: " << isCommitted << std::endl;
 
                 entries.emplace_back(term, messageId, message, isCommitted);
+            } else {
+                std::cout << "we did not get 4 parts for: " << item << std::endl;
             }
         }
 
@@ -100,12 +113,16 @@ class Log {
     }
 
     std::vector<LogEntry> getCommittedEntries() const {
+        std::cout << "Printing log entries before getCommittedEntries: " << std::endl;
+        this->printLogEntries();
         std::vector<LogEntry> committedEntries;
         for (size_t i = 0; i < entries.size(); i++) {
-            if (entries[i].isCommitted) {
+            if (entries[i].isCommitted == "true") {
                 committedEntries.push_back(entries[i]);
             }
         }
+        std::cout << "Printing log entries after getCommittedEntries: " << std::endl;
+        this->printLogEntries();
         return committedEntries;
     }
 

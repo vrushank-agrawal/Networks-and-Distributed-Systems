@@ -44,7 +44,7 @@ class Server {
         int currentTerm;
         int pid;
         int serverSocket;
-        int ackReceived;
+        std::map<int, int> ackReceived;
         socklen_t addressLength = sizeof(struct sockaddr_in);
         ClientInfo* clients[4];
 
